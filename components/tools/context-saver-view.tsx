@@ -75,8 +75,8 @@ export function ContextSaverView({ task }: ContextSaverViewProps) {
       {isRunning && (
         <>
           <div className="absolute inset-0 opacity-30 pointer-events-none">
-            <div
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-violet-200/50 to-transparent dark:via-violet-500/10"
+          <div
+            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent dark:via-white/10"
               style={{
                 animation: "shimmer 2s infinite",
               }}
@@ -100,7 +100,7 @@ export function ContextSaverView({ task }: ContextSaverViewProps) {
         <div
           className={cn(
             "absolute inset-0 bg-gradient-to-br opacity-50 pointer-events-none",
-            "from-violet-50 to-purple-50 dark:from-neutral-800/50 dark:to-neutral-800/30"
+            "from-gray-50 to-gray-100 dark:from-neutral-800/50 dark:to-neutral-800/30"
           )}
         />
       )}
@@ -110,7 +110,7 @@ export function ContextSaverView({ task }: ContextSaverViewProps) {
         <div
           className={cn(
             "absolute inset-0 bg-gradient-to-br opacity-50 pointer-events-none",
-            "from-red-50 to-rose-50 dark:from-neutral-800/50 dark:to-neutral-800/30"
+            "from-gray-50 to-gray-100 dark:from-neutral-800/50 dark:to-neutral-800/30"
           )}
         />
       )}
@@ -122,14 +122,14 @@ export function ContextSaverView({ task }: ContextSaverViewProps) {
           className={cn(
             "relative w-10 h-10 rounded-xl flex items-center justify-center",
             neumorphicInset,
-            isError ? "text-red-500" : "text-violet-500"
+            "text-gray-500 dark:text-neutral-400"
           )}
         >
           <IoCreate className="w-5 h-5" />
           {/* Pulsing ring when running */}
           {isRunning && (
             <div
-              className="absolute inset-0 rounded-xl border-2 border-current opacity-50 text-violet-500"
+              className="absolute inset-0 rounded-xl border-2 border-current opacity-50 text-gray-500 dark:text-neutral-400"
               style={{ animation: "pulse-glow 1.5s ease-in-out infinite" }}
             />
           )}
@@ -143,10 +143,10 @@ export function ContextSaverView({ task }: ContextSaverViewProps) {
               {isError && "Failed to save"}
             </span>
             {isRunning && (
-              <AiOutlineLoading3Quarters className="w-3.5 h-3.5 animate-spin text-violet-500" />
+              <AiOutlineLoading3Quarters className="w-3.5 h-3.5 animate-spin text-gray-500 dark:text-neutral-400" />
             )}
             {isComplete && (
-              <IoCheckmarkCircle className="w-4 h-4 text-emerald-500" />
+              <IoCheckmarkCircle className="w-4 h-4 text-gray-500 dark:text-neutral-400" />
             )}
           </div>
           {task.savedPath && (
@@ -161,7 +161,7 @@ export function ContextSaverView({ task }: ContextSaverViewProps) {
       {(task.streamedText || isError) && (
         <div className={cn(neumorphicInset, "p-3 max-h-48 overflow-y-auto")}>
           {isError && task.error ? (
-            <p className="text-xs text-red-600 dark:text-red-400">
+            <p className="text-xs text-gray-600 dark:text-neutral-400">
               {task.error}
             </p>
           ) : (
@@ -169,7 +169,7 @@ export function ContextSaverView({ task }: ContextSaverViewProps) {
               <pre className="text-xs text-gray-600 dark:text-neutral-400 whitespace-pre-wrap font-mono leading-relaxed">
                 {displayText}
                 {isRunning && (
-                  <span className="inline-block w-2 h-4 ml-0.5 bg-violet-500 dark:bg-violet-400 animate-pulse" />
+                  <span className="inline-block w-2 h-4 ml-0.5 bg-gray-500 dark:bg-neutral-400 animate-pulse" />
                 )}
               </pre>
             </div>

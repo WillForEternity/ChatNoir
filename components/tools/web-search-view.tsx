@@ -141,7 +141,7 @@ function SearchLoading({ query }: { query?: string }) {
           className={cn(
             "w-10 h-10 rounded-xl flex items-center justify-center",
             neumorphicInset,
-            "text-indigo-500"
+            "text-gray-500 dark:text-neutral-400"
           )}
         >
           <IoSearch className="w-5 h-5" />
@@ -151,7 +151,7 @@ function SearchLoading({ query }: { query?: string }) {
             <span className="text-sm font-medium text-gray-700 dark:text-neutral-300">
               Searching the web
             </span>
-            <AiOutlineLoading3Quarters className="w-3.5 h-3.5 text-indigo-500 animate-spin" />
+            <AiOutlineLoading3Quarters className="w-3.5 h-3.5 text-gray-500 dark:text-neutral-400 animate-spin" />
           </div>
           <p className="text-xs text-gray-500 dark:text-neutral-400">
             Finding relevant sources...
@@ -246,7 +246,7 @@ function SearchResults({ results, query }: { results: WebSearchResult[]; query?:
           className={cn(
             "w-10 h-10 rounded-xl flex items-center justify-center",
             neumorphicInset,
-            "text-indigo-500"
+            "text-gray-500 dark:text-neutral-400"
           )}
         >
           <IoSearch className="w-5 h-5" />
@@ -256,7 +256,7 @@ function SearchResults({ results, query }: { results: WebSearchResult[]; query?:
             <span className="text-sm font-medium text-gray-700 dark:text-neutral-300">
               Web Search Complete
             </span>
-            <IoCheckmarkCircle className="w-4 h-4 text-emerald-500" />
+            <IoCheckmarkCircle className="w-4 h-4 text-gray-500 dark:text-neutral-400" />
           </div>
           <p className="text-xs text-gray-500 dark:text-neutral-400">
             Found {resultCount} source{resultCount !== 1 ? "s" : ""} of truth
@@ -312,7 +312,7 @@ function SearchResults({ results, query }: { results: WebSearchResult[]; query?:
                         />
                         <IoGlobeOutline className="w-3 h-3 text-gray-400 hidden" />
                       </div>
-                      <span className="text-xs text-indigo-500 dark:text-indigo-400 truncate flex-1 font-medium">
+                      <span className="text-xs text-gray-600 dark:text-neutral-400 truncate flex-1 font-medium">
                         {resultDomain}
                       </span>
                       {result.pageAge && (
@@ -340,7 +340,7 @@ function SearchResults({ results, query }: { results: WebSearchResult[]; query?:
                       rel="noopener noreferrer"
                       className={cn(
                         neumorphicButton,
-                        "inline-flex items-center gap-2 px-4 py-2 text-xs font-medium text-indigo-600 dark:text-indigo-400"
+                        "inline-flex items-center gap-2 px-4 py-2 text-xs font-medium text-gray-600 dark:text-neutral-400"
                       )}
                     >
                       <IoOpenOutline className="w-4 h-4" />
@@ -381,7 +381,7 @@ function SearchResults({ results, query }: { results: WebSearchResult[]; query?:
                     className={cn(
                       "transition-all duration-200 rounded-full",
                       i === currentIndex
-                        ? "w-5 h-1.5 bg-indigo-500"
+                        ? "w-5 h-1.5 bg-gray-500 dark:bg-neutral-400"
                         : "w-1.5 h-1.5 bg-gray-300 dark:bg-neutral-600 hover:bg-gray-400 dark:hover:bg-neutral-500"
                     )}
                     aria-label={`Go to result ${i + 1}`}

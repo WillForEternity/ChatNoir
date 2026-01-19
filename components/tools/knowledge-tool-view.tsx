@@ -81,43 +81,43 @@ const toolConfig: Record<
 > = {
   kb_list: {
     icon: IoList,
-    color: "text-blue-500",
+    color: "text-gray-500 dark:text-neutral-400",
     label: "Exploring",
     verb: "Listed",
   },
   kb_read: {
     icon: IoReader,
-    color: "text-emerald-500",
+    color: "text-gray-500 dark:text-neutral-400",
     label: "Reading",
     verb: "Read",
   },
   kb_write: {
     icon: IoCreate,
-    color: "text-violet-500",
+    color: "text-gray-500 dark:text-neutral-400",
     label: "Writing",
     verb: "Saved",
   },
   kb_append: {
     icon: IoAdd,
-    color: "text-amber-500",
+    color: "text-gray-500 dark:text-neutral-400",
     label: "Appending",
     verb: "Appended to",
   },
   kb_mkdir: {
     icon: IoFolderOpen,
-    color: "text-cyan-500",
+    color: "text-gray-500 dark:text-neutral-400",
     label: "Creating folder",
     verb: "Created folder",
   },
   kb_delete: {
     icon: IoTrash,
-    color: "text-rose-500",
+    color: "text-gray-500 dark:text-neutral-400",
     label: "Deleting",
     verb: "Deleted",
   },
   kb_search: {
     icon: IoSearch,
-    color: "text-indigo-500",
+    color: "text-gray-500 dark:text-neutral-400",
     label: "Searching",
     verb: "Searched",
   },
@@ -210,7 +210,7 @@ function ListResult({ path, contents }: { path: string; contents: string[] }) {
           className={cn(
             "w-10 h-10 rounded-xl flex items-center justify-center",
             neumorphicInset,
-            "text-blue-500"
+            "text-gray-500 dark:text-neutral-400"
           )}
         >
           <IoFolderOpen className="w-5 h-5" />
@@ -220,7 +220,7 @@ function ListResult({ path, contents }: { path: string; contents: string[] }) {
             <span className="text-sm font-medium text-gray-700 dark:text-neutral-300">
               Explored
             </span>
-            <IoCheckmarkCircle className="w-4 h-4 text-emerald-500" />
+            <IoCheckmarkCircle className="w-4 h-4 text-gray-500 dark:text-neutral-400" />
           </div>
           <p className="text-xs text-gray-500 dark:text-neutral-400 truncate font-mono">
             {path || "/"}
@@ -250,9 +250,7 @@ function ListResult({ path, contents }: { path: string; contents: string[] }) {
                     "bg-white dark:bg-neutral-800",
                     "shadow-[2px_2px_4px_rgba(0,0,0,0.05),-2px_-2px_4px_rgba(255,255,255,0.6)]",
                     "dark:shadow-[2px_2px_4px_rgba(0,0,0,0.2),-2px_-2px_4px_rgba(255,255,255,0.02)]",
-                    isFolder
-                      ? "text-blue-600 dark:text-neutral-300"
-                      : "text-gray-600 dark:text-neutral-400"
+                    "text-gray-600 dark:text-neutral-400"
                   )}
                 >
                   {isFolder ? (
@@ -283,7 +281,7 @@ function ReadResult({ path, content }: { path: string; content: string }) {
           className={cn(
             "w-10 h-10 rounded-xl flex items-center justify-center",
             neumorphicInset,
-            "text-emerald-500"
+            "text-gray-500 dark:text-neutral-400"
           )}
         >
           <IoReader className="w-5 h-5" />
@@ -293,7 +291,7 @@ function ReadResult({ path, content }: { path: string; content: string }) {
             <span className="text-sm font-medium text-gray-700 dark:text-neutral-300">
               Read
             </span>
-            <IoCheckmarkCircle className="w-4 h-4 text-emerald-500" />
+            <IoCheckmarkCircle className="w-4 h-4 text-gray-500 dark:text-neutral-400" />
           </div>
           <p className="text-xs text-gray-500 dark:text-neutral-400 truncate font-mono">
             {fileName}
@@ -327,17 +325,17 @@ interface SearchResultItem {
 const queryTypeConfig = {
   exact: {
     label: "Exact",
-    color: "text-violet-600 bg-violet-50 dark:bg-violet-900/30 dark:text-violet-400",
+    color: "text-gray-600 bg-gray-100 dark:bg-neutral-700/50 dark:text-neutral-300",
     description: "Term matching prioritized",
   },
   semantic: {
     label: "Semantic",
-    color: "text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400",
+    color: "text-gray-600 bg-gray-100 dark:bg-neutral-700/50 dark:text-neutral-300",
     description: "Meaning-based search",
   },
   mixed: {
     label: "Hybrid",
-    color: "text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-400",
+    color: "text-gray-600 bg-gray-100 dark:bg-neutral-700/50 dark:text-neutral-300",
     description: "Balanced search",
   },
 };
@@ -355,12 +353,13 @@ function SearchResult({
 
   return (
     <div className={cn(neumorphicBase, "my-3 p-4 isolate")}>
+      {/* Header */}
       <div className="flex items-center gap-3 mb-3">
         <div
           className={cn(
             "w-10 h-10 rounded-xl flex items-center justify-center",
             neumorphicInset,
-            "text-indigo-500"
+            "text-gray-500 dark:text-neutral-400"
           )}
         >
           <IoSearch className="w-5 h-5" />
@@ -370,7 +369,7 @@ function SearchResult({
             <span className="text-sm font-medium text-gray-700 dark:text-neutral-300">
               Searched
             </span>
-            <IoCheckmarkCircle className="w-4 h-4 text-emerald-500" />
+            <IoCheckmarkCircle className="w-4 h-4 text-gray-500 dark:text-neutral-400" />
             {/* Query type badge */}
             <span
               className={cn(
@@ -387,7 +386,7 @@ function SearchResult({
           </p>
         </div>
         {!isEmpty && (
-          <span className="text-xs font-medium text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded-full">
+          <span className="text-xs font-medium text-gray-600 bg-gray-100 dark:bg-neutral-700/50 dark:text-neutral-300 px-2 py-1 rounded-full">
             {results.length} result{results.length !== 1 ? "s" : ""}
           </span>
         )}
@@ -403,85 +402,48 @@ function SearchResult({
           No matching content found
         </div>
       ) : (
-        <div className={cn(neumorphicInset, "p-3 space-y-3")}>
-          {results.map((result, i) => {
-            const fileName = result.filePath.split("/").pop() || result.filePath;
-            const scoreColor =
-              result.score >= 0.7
-                ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/30"
-                : result.score >= 0.5
-                ? "text-amber-500 bg-amber-50 dark:bg-amber-900/30"
-                : "text-gray-500 bg-gray-50 dark:bg-gray-900/30";
-            const preview =
-              result.chunkText.length > 150
-                ? result.chunkText.substring(0, 150) + "..."
+        <div className={cn(neumorphicInset, "p-2")}>
+          {/* Grid layout for results - compact cards */}
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+            {results.map((result, i) => {
+              const fileName = result.filePath.split("/").pop() || result.filePath;
+              const preview = result.chunkText.length > 60 
+                ? result.chunkText.substring(0, 60) + "…" 
                 : result.chunkText;
-            
-            // Check if we have matched terms to display
-            const hasMatchedTerms = result.matchedTerms && result.matchedTerms.length > 0;
 
-            return (
-              <div
-                key={i}
-                className={cn(
-                  "p-3 rounded-lg",
-                  "bg-white dark:bg-neutral-800",
-                  "shadow-[2px_2px_4px_rgba(0,0,0,0.05),-2px_-2px_4px_rgba(255,255,255,0.6)]",
-                  "dark:shadow-[2px_2px_4px_rgba(0,0,0,0.2),-2px_-2px_4px_rgba(255,255,255,0.02)]"
-                )}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <IoDocument className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                    <span className="text-xs font-medium text-gray-600 dark:text-neutral-400 truncate font-mono">
-                      {fileName}
+              return (
+                <div
+                  key={i}
+                  className={cn(
+                    "p-2 rounded-lg flex flex-col gap-1",
+                    "bg-white dark:bg-neutral-800",
+                    "shadow-[1px_1px_3px_rgba(0,0,0,0.06),-1px_-1px_3px_rgba(255,255,255,0.7)]",
+                    "dark:shadow-[1px_1px_3px_rgba(0,0,0,0.25),-1px_-1px_3px_rgba(255,255,255,0.02)]",
+                    "cursor-default"
+                  )}
+                  title={`${fileName}\nScore: ${Math.round(result.score * 100)}%\n${result.chunkText.substring(0, 200)}...`}
+                >
+                  {/* Header with icon and score */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      <IoDocument className="w-3 h-3 text-gray-400 dark:text-neutral-500" />
+                      <span className="text-[10px] text-gray-400 dark:text-neutral-500 truncate font-mono max-w-[60px]">
+                        {fileName}
+                      </span>
+                    </div>
+                    <span className="text-xs font-semibold text-gray-600 dark:text-neutral-400">
+                      {Math.round(result.score * 100)}%
                     </span>
-                    {result.headingPath && (
-                      <span className="text-xs text-gray-400 dark:text-neutral-500 truncate hidden sm:inline">
-                        • {result.headingPath}
-                      </span>
-                    )}
                   </div>
-                  <span
-                    className={cn(
-                      "text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ml-2",
-                      scoreColor
-                    )}
-                    title={
-                      result.semanticScore !== undefined && result.lexicalScore !== undefined
-                        ? `Semantic: ${Math.round(result.semanticScore * 100)}% | Lexical: ${Math.round(result.lexicalScore * 100)}%`
-                        : undefined
-                    }
-                  >
-                    {Math.round(result.score * 100)}%
-                  </span>
+                  
+                  {/* Content preview */}
+                  <p className="text-xs text-gray-600 dark:text-neutral-400 line-clamp-3 leading-tight">
+                    {preview}
+                  </p>
                 </div>
-                
-                {/* Matched terms pills - only show if we have matches */}
-                {hasMatchedTerms && (
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    {result.matchedTerms!.slice(0, 5).map((term, j) => (
-                      <span
-                        key={j}
-                        className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
-                      >
-                        {term}
-                      </span>
-                    ))}
-                    {result.matchedTerms!.length > 5 && (
-                      <span className="text-[10px] text-gray-400 dark:text-neutral-500 self-center">
-                        +{result.matchedTerms!.length - 5} more
-                      </span>
-                    )}
-                  </div>
-                )}
-                
-                <p className="text-xs text-gray-600 dark:text-neutral-400 whitespace-pre-wrap line-clamp-3">
-                  {preview}
-                </p>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -500,27 +462,27 @@ function WriteResult({
   const configs = {
     write: {
       icon: IoCreate,
-      color: "text-violet-500",
+      color: "text-gray-500 dark:text-neutral-400",
       label: "Saved",
-      bg: "from-violet-50 to-purple-50 dark:from-neutral-800/50 dark:to-neutral-800/30",
+      bg: "from-gray-50 to-gray-100 dark:from-neutral-800/50 dark:to-neutral-800/30",
     },
     append: {
       icon: IoAdd,
-      color: "text-amber-500",
+      color: "text-gray-500 dark:text-neutral-400",
       label: "Appended",
-      bg: "from-amber-50 to-yellow-50 dark:from-neutral-800/50 dark:to-neutral-800/30",
+      bg: "from-gray-50 to-gray-100 dark:from-neutral-800/50 dark:to-neutral-800/30",
     },
     mkdir: {
       icon: IoFolderOpen,
-      color: "text-cyan-500",
+      color: "text-gray-500 dark:text-neutral-400",
       label: "Created folder",
-      bg: "from-cyan-50 to-blue-50 dark:from-neutral-800/50 dark:to-neutral-800/30",
+      bg: "from-gray-50 to-gray-100 dark:from-neutral-800/50 dark:to-neutral-800/30",
     },
     delete: {
       icon: IoTrash,
-      color: "text-rose-500",
+      color: "text-gray-500 dark:text-neutral-400",
       label: "Deleted",
-      bg: "from-rose-50 to-red-50 dark:from-neutral-800/50 dark:to-neutral-800/30",
+      bg: "from-gray-50 to-gray-100 dark:from-neutral-800/50 dark:to-neutral-800/30",
     },
   };
 
@@ -552,7 +514,7 @@ function WriteResult({
             <span className="text-sm font-medium text-gray-700 dark:text-neutral-300">
               {config.label}
             </span>
-            <IoCheckmarkCircle className="w-4 h-4 text-emerald-500" />
+            <IoCheckmarkCircle className="w-4 h-4 text-gray-500 dark:text-neutral-400" />
           </div>
           <p className="text-xs text-gray-500 dark:text-neutral-400 truncate font-mono">
             {fileName}

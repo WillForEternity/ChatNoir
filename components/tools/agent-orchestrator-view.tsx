@@ -117,10 +117,10 @@ function AgentSlot({ agent, index }: AgentSlotProps) {
       title={agent?.name ?? `Slot ${index + 1}`}
     >
       {isComplete && (
-        <IoCheckmark className="w-7 h-7 text-emerald-500 dark:text-emerald-400" />
+        <IoCheckmark className="w-7 h-7 text-gray-600 dark:text-neutral-400" />
       )}
       {isError && (
-        <IoClose className="w-7 h-7 text-red-500 dark:text-red-400" />
+        <IoClose className="w-7 h-7 text-gray-600 dark:text-neutral-400" />
       )}
       {isRunning && (
         <AiOutlineLoading3Quarters className="w-5 h-5 text-gray-400 dark:text-neutral-500 animate-spin" />
@@ -176,9 +176,7 @@ export function AgentOrchestratorView({ state, expectedAgentCount }: AgentOrches
         <span className={cn(
           "text-xs font-mono",
           stats.allDone
-            ? stats.errors > 0
-              ? "text-amber-500 dark:text-amber-400"
-              : "text-emerald-500 dark:text-emerald-400"
+            ? "text-gray-600 dark:text-neutral-400"
             : "text-gray-400 dark:text-neutral-500"
         )}>
           {stats.completed}/{displayCount}

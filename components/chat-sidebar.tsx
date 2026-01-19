@@ -37,11 +37,13 @@ import {
   MessageCircle,
   Brain,
   Sparkles,
+  Menu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ChatConversation } from "@/lib/chat-types";
 import { KnowledgeBrowser, type KnowledgeBrowserRef } from "./knowledge-browser";
 import { EmbeddingsViewer } from "./embeddings-viewer";
+import { ChatEmbeddingsViewer } from "./chat-embeddings-viewer";
 
 // =============================================================================
 // SETTINGS TYPES
@@ -60,6 +62,8 @@ interface AppSettings {
 // TYPES
 // =============================================================================
 
+export type SidebarTab = "chats" | "knowledge" | "embeddings";
+
 interface ChatSidebarProps {
   conversations: ChatConversation[];
   activeConversationId: string | null;
@@ -71,6 +75,9 @@ interface ChatSidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   knowledgeBrowserRef?: React.RefObject<KnowledgeBrowserRef | null>;
+  // Tab state controlled from parent
+  activeTab: SidebarTab;
+  onTabChange: (tab: SidebarTab) => void;
 }
 
 // =============================================================================
@@ -694,10 +701,14 @@ export function ChatSidebar({
   isCollapsed,
   onToggleCollapse,
   knowledgeBrowserRef,
+  activeTab,
+  onTabChange,
 }: ChatSidebarProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [activeTab, setActiveTab] = useState<"chats" | "knowledge" | "embeddings">("chats");
+  const [embeddingsSubTab, setEmbeddingsSubTab] = useState<"kb" | "chats">("kb");
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [sidebarWidth, setSidebarWidth] = useState(MIN_SIDEBAR_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -738,6 +749,32 @@ export function ChatSidebar({
       document.body.style.cursor = "";
     };
   }, [isResizing]);
+
+  // Close hamburger menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    }
+
+    if (isMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [isMenuOpen]);
+
+  // Close hamburger menu on Escape key
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && isMenuOpen) {
+        setIsMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isMenuOpen]);
 
   // Prevent hydration mismatch by only grouping after mount
   useEffect(() => {
@@ -814,7 +851,7 @@ export function ChatSidebar({
         )}
       />
       
-      {/* Header with collapse button */}
+      {/* Header with collapse button and hamburger menu */}
       <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-neutral-700 h-[52px] flex-shrink-0">
         <div className="flex items-center gap-2">
           <Button
@@ -826,47 +863,204 @@ export function ChatSidebar({
             <ChevronLeft className="h-4 w-4" />
           </Button>
         </div>
-        {/* Tab buttons */}
-        <div className="flex items-center gap-1">
+        
+        {/* Hamburger Menu Button with beautiful UI effects */}
+        <div ref={menuRef} className="relative">
           <button
-            onClick={() => setActiveTab("chats")}
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
             className={cn(
-              "flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm font-medium transition-colors",
-              activeTab === "chats"
-                ? "bg-gray-200 dark:bg-neutral-700 text-gray-900 dark:text-neutral-100"
-                : "text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800"
+              "relative w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-300",
+              // Neumorphic styling
+              "bg-gray-50 dark:bg-neutral-950",
+              isMenuOpen
+                ? "shadow-[inset_3px_3px_6px_rgba(0,0,0,0.1),inset_-3px_-3px_6px_rgba(255,255,255,0.9)] dark:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.5),inset_-3px_-3px_6px_rgba(255,255,255,0.04)]"
+                : "shadow-[3px_3px_6px_rgba(0,0,0,0.08),-3px_-3px_6px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_6px_rgba(0,0,0,0.4),-3px_-3px_6px_rgba(255,255,255,0.03)]",
+              // Hover effects
+              "hover:shadow-[4px_4px_8px_rgba(0,0,0,0.1),-4px_-4px_8px_rgba(255,255,255,0.9)]",
+              "dark:hover:shadow-[4px_4px_8px_rgba(0,0,0,0.5),-4px_-4px_8px_rgba(255,255,255,0.04)]",
+              // Active state
+              "active:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.12),inset_-4px_-4px_8px_rgba(255,255,255,0.7)]",
+              "dark:active:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.6),inset_-4px_-4px_8px_rgba(255,255,255,0.02)]"
             )}
-            title="Chats"
+            title="Toggle navigation menu"
           >
-            <MessageCircle className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Chats</span>
+            {/* Animated hamburger icon */}
+            <div className="relative w-3.5 h-3.5 flex flex-col justify-center items-center">
+              <span 
+                className={cn(
+                  "absolute w-3.5 h-0.5 rounded-full bg-gray-600 dark:bg-neutral-400 transition-all duration-300 ease-out",
+                  isMenuOpen ? "rotate-45 translate-y-0" : "-translate-y-1"
+                )}
+              />
+              <span 
+                className={cn(
+                  "absolute w-3.5 h-0.5 rounded-full bg-gray-600 dark:bg-neutral-400 transition-all duration-300 ease-out",
+                  isMenuOpen ? "opacity-0 scale-x-0" : "opacity-100 scale-x-100"
+                )}
+              />
+              <span 
+                className={cn(
+                  "absolute w-3.5 h-0.5 rounded-full bg-gray-600 dark:bg-neutral-400 transition-all duration-300 ease-out",
+                  isMenuOpen ? "-rotate-45 translate-y-0" : "translate-y-1"
+                )}
+              />
+            </div>
           </button>
-          <button
-            onClick={() => setActiveTab("knowledge")}
+
+          {/* Dropdown Menu with beautiful animations */}
+          <div
             className={cn(
-              "flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm font-medium transition-colors",
-              activeTab === "knowledge"
-                ? "bg-gray-200 dark:bg-neutral-700 text-gray-900 dark:text-neutral-100"
-                : "text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800"
+              "absolute right-0 top-full mt-2 w-56 origin-top-right transition-all duration-300 ease-out z-50",
+              isMenuOpen
+                ? "opacity-100 scale-100 translate-y-0"
+                : "opacity-0 scale-95 -translate-y-2 pointer-events-none"
             )}
-            title="Knowledge Base"
           >
-            <Brain className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">KB</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("embeddings")}
-            className={cn(
-              "flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm font-medium transition-colors",
-              activeTab === "embeddings"
-                ? "bg-gray-200 dark:bg-neutral-700 text-gray-900 dark:text-neutral-100"
-                : "text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800"
-            )}
-            title="Embedding Space Visualization"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Viz</span>
-          </button>
+            <div 
+              className={cn(
+                "rounded-2xl overflow-hidden",
+                // Neumorphic card styling
+                "bg-white dark:bg-neutral-900",
+                "shadow-[8px_8px_20px_rgba(0,0,0,0.1),-8px_-8px_20px_rgba(255,255,255,0.9)]",
+                "dark:shadow-[8px_8px_20px_rgba(0,0,0,0.5),-8px_-8px_20px_rgba(255,255,255,0.03)]",
+                "border border-gray-100 dark:border-neutral-800"
+              )}
+            >
+              {/* Menu header */}
+              <div className="px-4 py-3 border-b border-gray-100 dark:border-neutral-800">
+                <p className="text-xs font-medium text-gray-400 dark:text-neutral-500 uppercase tracking-wider">
+                  Navigation
+                </p>
+              </div>
+
+              {/* Menu items */}
+              <div className="py-2 px-2">
+                {/* Chats */}
+                <button
+                  onClick={() => {
+                    onTabChange("chats");
+                    setIsMenuOpen(false);
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200",
+                    activeTab === "chats"
+                      ? "bg-gray-100 dark:bg-neutral-800 shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3),inset_-2px_-2px_4px_rgba(255,255,255,0.02)]"
+                      : "hover:bg-gray-50 dark:hover:bg-neutral-800/50"
+                  )}
+                >
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200",
+                    activeTab === "chats"
+                      ? "bg-blue-500 text-white shadow-lg shadow-blue-500/30"
+                      : "bg-gray-100 dark:bg-neutral-800 text-gray-500 dark:text-neutral-400"
+                  )}>
+                    <MessageCircle className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className={cn(
+                      "text-sm font-medium",
+                      activeTab === "chats"
+                        ? "text-gray-900 dark:text-neutral-100"
+                        : "text-gray-700 dark:text-neutral-300"
+                    )}>
+                      Chats
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-neutral-500">
+                      Conversation history
+                    </p>
+                  </div>
+                  {activeTab === "chats" && (
+                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                  )}
+                </button>
+
+                {/* Knowledge Base */}
+                <button
+                  onClick={() => {
+                    onTabChange("knowledge");
+                    setIsMenuOpen(false);
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 mt-1",
+                    activeTab === "knowledge"
+                      ? "bg-gray-100 dark:bg-neutral-800 shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3),inset_-2px_-2px_4px_rgba(255,255,255,0.02)]"
+                      : "hover:bg-gray-50 dark:hover:bg-neutral-800/50"
+                  )}
+                >
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200",
+                    activeTab === "knowledge"
+                      ? "bg-purple-500 text-white shadow-lg shadow-purple-500/30"
+                      : "bg-gray-100 dark:bg-neutral-800 text-gray-500 dark:text-neutral-400"
+                  )}>
+                    <Brain className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className={cn(
+                      "text-sm font-medium",
+                      activeTab === "knowledge"
+                        ? "text-gray-900 dark:text-neutral-100"
+                        : "text-gray-700 dark:text-neutral-300"
+                    )}>
+                      Knowledge Base
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-neutral-500">
+                      Persistent memory
+                    </p>
+                  </div>
+                  {activeTab === "knowledge" && (
+                    <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+                  )}
+                </button>
+
+                {/* Visualization */}
+                <button
+                  onClick={() => {
+                    onTabChange("embeddings");
+                    setIsMenuOpen(false);
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 mt-1",
+                    activeTab === "embeddings"
+                      ? "bg-gray-100 dark:bg-neutral-800 shadow-[inset_2px_2px_4px_rgba(0,0,0,0.05),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3),inset_-2px_-2px_4px_rgba(255,255,255,0.02)]"
+                      : "hover:bg-gray-50 dark:hover:bg-neutral-800/50"
+                  )}
+                >
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200",
+                    activeTab === "embeddings"
+                      ? "bg-amber-500 text-white shadow-lg shadow-amber-500/30"
+                      : "bg-gray-100 dark:bg-neutral-800 text-gray-500 dark:text-neutral-400"
+                  )}>
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className={cn(
+                      "text-sm font-medium",
+                      activeTab === "embeddings"
+                        ? "text-gray-900 dark:text-neutral-100"
+                        : "text-gray-700 dark:text-neutral-300"
+                    )}>
+                      Visualization
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-neutral-500">
+                      Embedding space
+                    </p>
+                  </div>
+                  {activeTab === "embeddings" && (
+                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  )}
+                </button>
+              </div>
+
+              {/* Footer with subtle hint */}
+              <div className="px-4 py-2 border-t border-gray-100 dark:border-neutral-800 bg-gray-50/50 dark:bg-neutral-900/50">
+                <p className="text-[10px] text-gray-400 dark:text-neutral-600 text-center">
+                  Press <kbd className="px-1 py-0.5 rounded bg-gray-200 dark:bg-neutral-700 text-gray-600 dark:text-neutral-400">Esc</kbd> to close
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -922,8 +1116,42 @@ export function ChatSidebar({
         /* Knowledge Browser Tab */
         <KnowledgeBrowser ref={knowledgeBrowserRef} className="flex-1" />
       ) : (
-        /* Embeddings Viewer Tab */
-        <EmbeddingsViewer className="flex-1" />
+        /* Embeddings Viewer Tab with KB/Chats subtabs */
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Sub-tab toggle */}
+          <div className="px-3 py-2 border-b border-gray-200 dark:border-neutral-700 bg-gray-50/50 dark:bg-neutral-900/50 flex-shrink-0">
+            <div className="flex items-center gap-1 bg-gray-100 dark:bg-neutral-800 rounded-lg p-0.5">
+              <button
+                onClick={() => setEmbeddingsSubTab("kb")}
+                className={cn(
+                  "flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                  embeddingsSubTab === "kb"
+                    ? "bg-white dark:bg-neutral-700 text-gray-900 dark:text-neutral-100 shadow-sm"
+                    : "text-gray-500 dark:text-neutral-400 hover:text-gray-700 dark:hover:text-neutral-300"
+                )}
+              >
+                KB Embeddings
+              </button>
+              <button
+                onClick={() => setEmbeddingsSubTab("chats")}
+                className={cn(
+                  "flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                  embeddingsSubTab === "chats"
+                    ? "bg-white dark:bg-neutral-700 text-gray-900 dark:text-neutral-100 shadow-sm"
+                    : "text-gray-500 dark:text-neutral-400 hover:text-gray-700 dark:hover:text-neutral-300"
+                )}
+              >
+                Chat Embeddings
+              </button>
+            </div>
+          </div>
+          {/* Viewer based on selected sub-tab */}
+          {embeddingsSubTab === "kb" ? (
+            <EmbeddingsViewer className="flex-1" />
+          ) : (
+            <ChatEmbeddingsViewer className="flex-1" />
+          )}
+        </div>
       )}
 
       {/* Settings Button */}

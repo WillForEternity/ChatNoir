@@ -36,7 +36,9 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { messages, rootFolders, kbSummary } = body;
+    const { messages, rootFolders, kbSummary, modelTier } = body;
+    
+    console.log("[Chat API] Received modelTier:", modelTier);
 
     // Get API key from environment variable
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -51,9 +53,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // Create the agent with the API key, Knowledge Base root folders, and KB summary
+    // Create the agent with the API key, Knowledge Base root folders, KB summary, and model tier
     // The kbSummary enables hybrid preload strategy (summary at prompt start, full retrieval on-demand)
-    const agent = createChatAgent(apiKey, rootFolders ?? [], kbSummary ?? "");
+    // The modelTier allows switching between Sonnet (master) and Opus (grandmaster)
+    const agent = createChatAgent(apiKey, rootFolders ?? [], kbSummary ?? "", modelTier ?? "sonnet");
 
     const uiMessages = Array.isArray(messages) ? messages : [];
 

@@ -27,7 +27,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from "ai";
 import type { UIMessage } from "ai";
-import type { ChatAgentUIMessage } from "@/agents";
+import type { ChatAgentUIMessage, ModelTier } from "@/agents";
 import * as kb from "@/knowledge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1118,6 +1118,7 @@ import {
 // Tool UI components - beautiful neumorphic views
 import { KnowledgeToolView } from "@/components/tools/knowledge-tool-view";
 import { WebSearchView } from "@/components/tools/web-search-view";
+import { ChatSearchView } from "@/components/tools/chat-search-view";
 import { GenericToolView } from "@/components/tools/generic-tool-view";
 import { ContextSaverView, type ParallelTask } from "@/components/tools/context-saver-view";
 import { AgentOrchestratorView, MAX_AGENTS, type OrchestratorState, type AgentTask, type AgentStatus } from "@/components/tools/agent-orchestrator-view";
@@ -2645,6 +2646,164 @@ function preprocessMathCodeBlocks(text: string): string {
   return text.replace(/^([ \t]*)```math\s*$/gm, "$1```mathblock");
 }
 
+/**
+ * Image token cache - stores calculated token counts for image URLs
+ * This allows us to calculate image tokens asynchronously and reuse them
+ */
+const imageTokenCache = new Map<string, number>();
+
+/**
+ * Calculate tokens for an image based on its dimensions.
+ * 
+ * According to Anthropic's documentation:
+ * - tokens ≈ (width × height) / 750
+ * - Images larger than 1568px on the longest edge are resized
+ * - Maximum ~1,600 tokens per image after resizing
+ * 
+ * @param width - Image width in pixels
+ * @param height - Image height in pixels
+ * @returns Estimated token count for the image
+ */
+function calculateImageTokens(width: number, height: number): number {
+  // If image would be resized (longest edge > 1568px), calculate resized dimensions
+  let effectiveWidth = width;
+  let effectiveHeight = height;
+  
+  const maxDimension = 1568;
+  const longestEdge = Math.max(width, height);
+  
+  if (longestEdge > maxDimension) {
+    const scale = maxDimension / longestEdge;
+    effectiveWidth = Math.floor(width * scale);
+    effectiveHeight = Math.floor(height * scale);
+  }
+  
+  // Calculate tokens: (width × height) / 750
+  const tokens = Math.ceil((effectiveWidth * effectiveHeight) / 750);
+  
+  // Cap at ~1,600 tokens (Anthropic's max after resizing)
+  return Math.min(tokens, 1600);
+}
+
+/**
+ * Get image dimensions from a data URL asynchronously.
+ * Caches the result to avoid recalculating.
+ * 
+ * @param dataUrl - The base64 data URL of the image
+ * @returns Promise that resolves to the token count for the image
+ */
+async function getImageTokensFromUrl(dataUrl: string): Promise<number> {
+  // Check cache first
+  if (imageTokenCache.has(dataUrl)) {
+    return imageTokenCache.get(dataUrl)!;
+  }
+  
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const tokens = calculateImageTokens(img.width, img.height);
+      imageTokenCache.set(dataUrl, tokens);
+      resolve(tokens);
+    };
+    img.onerror = () => {
+      // Default to ~1000 tokens if we can't load the image
+      const fallbackTokens = 1000;
+      imageTokenCache.set(dataUrl, fallbackTokens);
+      resolve(fallbackTokens);
+    };
+    img.src = dataUrl;
+  });
+}
+
+/**
+ * Extract all image URLs from messages for token calculation
+ */
+function extractImageUrls(messages: Array<{ parts?: Array<{ type: string; url?: string; mediaType?: string }> }>): string[] {
+  const urls: string[] = [];
+  
+  for (const message of messages) {
+    if (message.parts) {
+      for (const part of message.parts) {
+        if (part.type === "file" && part.mediaType?.startsWith("image/") && part.url) {
+          urls.push(part.url);
+        }
+      }
+    }
+  }
+  
+  return urls;
+}
+
+/**
+ * Estimate token count for messages (synchronous version using cache).
+ * 
+ * Claude models use a tokenizer similar to other modern LLMs.
+ * A reasonable approximation is ~4 characters per token for English text,
+ * though this varies based on content (code tends to have more tokens per char).
+ * 
+ * For images, uses Anthropic's formula: tokens ≈ (width × height) / 750
+ * Image tokens are cached after first calculation.
+ * 
+ * This is an estimate - the official Anthropic tokenizer is not accurate
+ * for Claude 3/4 models, so we use a heuristic approach.
+ */
+function estimateTokenCount(
+  messages: Array<{ 
+    role: string; 
+    content?: string; 
+    parts?: Array<{ type: string; text?: string; url?: string; mediaType?: string }> 
+  }>,
+  imageTokens: Map<string, number>
+): number {
+  let totalTokens = 0;
+  
+  for (const message of messages) {
+    // Add role overhead (roughly 4 tokens per message for formatting)
+    totalTokens += 4;
+    
+    // Handle direct content
+    if (typeof message.content === "string") {
+      totalTokens += Math.ceil(message.content.length / 4);
+    }
+    
+    // Handle parts-based messages (AI SDK format)
+    if (message.parts) {
+      for (const part of message.parts) {
+        if (part.type === "text" && part.text) {
+          totalTokens += Math.ceil(part.text.length / 4);
+        } else if (part.type === "tool-invocation") {
+          // Tool calls add overhead - estimate ~50 tokens per tool call
+          totalTokens += 50;
+        } else if (part.type === "file" && part.mediaType?.startsWith("image/") && part.url) {
+          // Get cached image tokens or use estimate
+          const cachedTokens = imageTokens.get(part.url);
+          if (cachedTokens !== undefined) {
+            totalTokens += cachedTokens;
+          } else {
+            // Default estimate while loading: ~1000 tokens (roughly a 866x866 image)
+            totalTokens += 1000;
+          }
+        }
+      }
+    }
+  }
+  
+  return totalTokens;
+}
+
+/**
+ * Format token count for display (e.g., "1.2k" for 1200)
+ */
+function formatTokenCount(count: number): string {
+  if (count >= 1000000) {
+    return `${(count / 1000000).toFixed(1)}M`;
+  }
+  if (count >= 1000) {
+    return `${(count / 1000).toFixed(1)}k`;
+  }
+  return count.toString();
+}
+
 // =============================================================================
 // STREAMING-AWARE MARKDOWN CONTENT COMPONENT
 // =============================================================================
@@ -2789,16 +2948,45 @@ interface ChatProps {
 // MESSAGE EDITOR COMPONENT
 // =============================================================================
 
+/** Image part from a message - can be data URL or base64 */
+interface MessageImagePart {
+  mediaType: string;
+  url?: string;
+  data?: string;
+}
+
 interface MessageEditorProps {
   initialText: string;
-  onSave: (newText: string) => void;
+  /** Initial images from the message being edited */
+  initialImages?: MessageImagePart[];
+  onSave: (newText: string, images: { file?: File; dataUrl: string; mediaType: string }[]) => void;
   onCancel: () => void;
   messagesAfterCount: number;
 }
 
-const MessageEditor = React.memo(function MessageEditor({ initialText, onSave, onCancel, messagesAfterCount }: MessageEditorProps) {
+const MessageEditor = React.memo(function MessageEditor({ 
+  initialText, 
+  initialImages = [],
+  onSave, 
+  onCancel, 
+  messagesAfterCount 
+}: MessageEditorProps) {
   const [text, setText] = useState(initialText);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const dragCounterRef = useRef(0);
+  
+  // Image state - combines existing images and newly added ones
+  // Each image has a dataUrl for display and optionally a File for new uploads
+  const [images, setImages] = useState<{ file?: File; dataUrl: string; mediaType: string }[]>(() => {
+    // Convert initial images to our format
+    return initialImages.map(img => ({
+      dataUrl: img.url || (img.data ? `data:${img.mediaType};base64,${img.data}` : ''),
+      mediaType: img.mediaType,
+    })).filter(img => img.dataUrl);
+  });
+  
+  const [isDragging, setIsDragging] = useState(false);
 
   // Auto-resize textarea based on content
   useEffect(() => {
@@ -2814,23 +3002,119 @@ const MessageEditor = React.memo(function MessageEditor({ initialText, onSave, o
       textareaRef.current.setSelectionRange(text.length, text.length);
     }
   }, []);
+  
+  // Convert File to data URL
+  const fileToDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+  
+  // Add images from files
+  const addImagesFromFiles = async (files: File[]) => {
+    const imageFiles = files.filter(f => f.type.startsWith("image/"));
+    if (imageFiles.length === 0) return;
+    
+    const newImages = await Promise.all(
+      imageFiles.map(async (file) => ({
+        file,
+        dataUrl: await fileToDataUrl(file),
+        mediaType: file.type,
+      }))
+    );
+    
+    setImages(prev => [...prev, ...newImages]);
+  };
+  
+  // Remove an image by index
+  const removeImage = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+  };
+  
+  // Drag and drop handlers
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.types.includes("Files")) {
+      setIsDragging(true);
+    }
+  };
+  
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
+  };
+  
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounterRef.current = 0;
+    
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      await addImagesFromFiles(files);
+    }
+  };
+  
+  // Handle file input change
+  const handleImageInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      await addImagesFromFiles(Array.from(e.target.files));
+    }
+    e.target.value = "";
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      if (text.trim() && text.trim() !== initialText.trim()) {
-        onSave(text.trim());
+      if (canSave) {
+        onSave(text.trim(), images);
       }
     } else if (e.key === "Escape") {
       onCancel();
     }
   };
-
-  const hasChanges = text.trim() !== initialText.trim();
-  const canSave = text.trim() && hasChanges;
+  
+  // Compare initial state with current to determine if there are changes
+  const initialImageUrls = initialImages.map(img => img.url || (img.data ? `data:${img.mediaType};base64,${img.data}` : '')).sort();
+  const currentImageUrls = images.map(img => img.dataUrl).sort();
+  const imagesChanged = JSON.stringify(initialImageUrls) !== JSON.stringify(currentImageUrls);
+  const textChanged = text.trim() !== initialText.trim();
+  const hasChanges = textChanged || imagesChanged;
+  const canSave = (text.trim() || images.length > 0) && hasChanges;
 
   return (
-    <div className="w-full space-y-3">
+    <div 
+      className="w-full space-y-3 relative"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Hidden file input for image uploads */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={handleImageInputChange}
+      />
+      
       {/* Warning banner if there are messages after this one */}
       {messagesAfterCount > 0 && (
         <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-lg text-amber-800 dark:text-amber-200">
@@ -2840,6 +3124,46 @@ const MessageEditor = React.memo(function MessageEditor({ initialText, onSave, o
             <span className="text-amber-600 dark:text-amber-300 ml-1">
               {messagesAfterCount} {messagesAfterCount === 1 ? 'message' : 'messages'} after this will be removed.
             </span>
+          </div>
+        </div>
+      )}
+      
+      {/* Image previews - same style as main chat input */}
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {images.map((img, index) => (
+            <div
+              key={`edit-img-${index}`}
+              className="relative group"
+            >
+              <img
+                src={img.dataUrl}
+                alt={img.file?.name || `Image ${index + 1}`}
+                className="h-16 w-auto rounded-lg border border-gray-200 dark:border-neutral-700 object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => removeImage(index)}
+                className="absolute -top-1.5 -right-1.5 p-1 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <IoClose className="w-3 h-3" />
+              </button>
+              {img.file && (
+                <span className="absolute bottom-0.5 left-0.5 right-0.5 text-[10px] text-white bg-black/50 rounded px-1 truncate">
+                  {img.file.name}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {/* Drag overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-blue-50/90 dark:bg-blue-900/30 border-2 border-dashed border-blue-400 dark:border-blue-600 rounded-xl">
+          <div className="text-center">
+            <IoImage className="w-8 h-8 mx-auto text-blue-500 dark:text-blue-400 mb-2" />
+            <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Drop image here</p>
           </div>
         </div>
       )}
@@ -2856,9 +3180,21 @@ const MessageEditor = React.memo(function MessageEditor({ initialText, onSave, o
       
       {/* Action buttons */}
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-500 dark:text-neutral-400">
-          {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter to save
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 dark:text-neutral-400">
+            {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter to save
+          </span>
+          {/* Add image button */}
+          <button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 dark:text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
+            title="Add image"
+          >
+            <IoImage className="w-3.5 h-3.5" />
+            <span>Add image</span>
+          </button>
+        </div>
         <div className="flex gap-2">
           <button
             type="button"
@@ -2869,7 +3205,7 @@ const MessageEditor = React.memo(function MessageEditor({ initialText, onSave, o
           </button>
           <button
             type="button"
-            onClick={() => canSave && onSave(text.trim())}
+            onClick={() => canSave && onSave(text.trim(), images)}
             disabled={!canSave}
             className={cn(
               "px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5",
@@ -2935,6 +3271,19 @@ export default function Chat({
   
   // Agent Orchestrator - unified view of all agents being spawned
   const [orchestratorState, setOrchestratorState] = useState<OrchestratorState | null>(null);
+  
+  // Model selection state - "sonnet" = master, "opus" = grandmaster
+  const [modelTier, setModelTier] = useState<ModelTier>("sonnet");
+  
+  // Image token cache for token count calculation
+  // Maps image URLs to their calculated token counts
+  const [imageTokens, setImageTokens] = useState<Map<string, number>>(new Map());
+  
+  // Ref to always have latest modelTier available (avoids stale closure in transport)
+  const modelTierRef = useRef<ModelTier>(modelTier);
+  useEffect(() => {
+    modelTierRef.current = modelTier;
+  }, [modelTier]);
 
   // ---------------------------------------------------------------------------
   // FILE HANDLING
@@ -3433,7 +3782,7 @@ ${content}
           case "kb_search": {
             // Hybrid search (lexical + semantic) across knowledge base
             const query = args.query as string;
-            const topK = Math.min((args.topK as number) || 5, 10);
+            const topK = Math.min((args.topK as number) || 5, 25);
             const results = await kb.hybridSearch(query, { 
               topK, 
               includeBreakdown: true 
@@ -3442,17 +3791,44 @@ ${content}
             if (results.length === 0) {
               output = {
                 results: [],
-                message: "No matching content found. Try a different query or check if knowledge base is empty.",
+                message: "No matching content found in knowledge base. Try a different query or check if knowledge base is empty.",
               };
             } else {
               // XML-formatted output for better context engineering
               // Include matched terms when available for transparency
-              const xmlOutput = `<search_results query="${query}" mode="${results[0]?.queryType || 'mixed'}">
+              const xmlOutput = `<search_results source="knowledge_base" query="${query}" mode="${results[0]?.queryType || 'mixed'}">
 ${results.map((r) => {
   const matchedTermsAttr = r.matchedTerms?.length > 0 
     ? ` matched_terms="${r.matchedTerms.join(', ')}"` 
     : '';
-  return `<result score="${r.score}" source="${r.filePath}" heading="${r.headingPath}"${matchedTermsAttr}>
+  return `<result score="${r.score}" file="${r.filePath}" heading="${r.headingPath}"${matchedTermsAttr}>
+<chunk_text>
+${r.chunkText}
+</chunk_text>
+</result>`;
+}).join("\n")}
+</search_results>`;
+              output = { search_results: xmlOutput, results };
+            }
+            break;
+          }
+          case "chat_search": {
+            // Semantic search across chat history
+            const { searchChatEmbeddings } = await import("@/lib/storage/chat-embeddings-ops");
+            const query = args.query as string;
+            const topK = Math.min((args.topK as number) || 5, 25);
+            const results = await searchChatEmbeddings(query, topK);
+            
+            if (results.length === 0) {
+              output = {
+                results: [],
+                message: "No matching content found in chat history. Try a different query or there may not be relevant past conversations.",
+              };
+            } else {
+              // XML-formatted output clearly marked as from chat history
+              const xmlOutput = `<search_results source="chat_history" query="${query}">
+${results.map((r) => {
+  return `<result score="${r.score}" conversation="${r.conversationTitle}" role="${r.messageRole}">
 <chunk_text>
 ${r.chunkText}
 </chunk_text>
@@ -3535,6 +3911,8 @@ ${r.chunkText}
             chatId,
             rootFolders,
             kbSummary,
+            // Use ref to always get latest modelTier (avoids stale closure)
+            modelTier: modelTierRef.current,
           },
         }),
       } as any),
@@ -3611,6 +3989,33 @@ ${r.chunkText}
   }, [addToolOutput]);
 
   const isLoading = status === "streaming" || status === "submitted";
+
+  // Calculate estimated token count for the current conversation
+  const tokenCount = useMemo(() => estimateTokenCount(messages, imageTokens), [messages, imageTokens]);
+  
+  // Effect to calculate image tokens asynchronously
+  useEffect(() => {
+    const imageUrls = extractImageUrls(messages);
+    const uncachedUrls = imageUrls.filter(url => !imageTokens.has(url));
+    
+    if (uncachedUrls.length === 0) return;
+    
+    // Calculate tokens for all uncached images
+    Promise.all(
+      uncachedUrls.map(async (url) => {
+        const tokens = await getImageTokensFromUrl(url);
+        return { url, tokens };
+      })
+    ).then((results) => {
+      setImageTokens(prev => {
+        const next = new Map(prev);
+        for (const { url, tokens } of results) {
+          next.set(url, tokens);
+        }
+        return next;
+      });
+    });
+  }, [messages, imageTokens]);
 
   // Track if this is the initial mount to prevent message sync loops
   const isInitialMount = useRef(true);
@@ -4001,14 +4406,35 @@ ${r.chunkText}
   }, []);
 
   /**
+   * Extract image parts from a message for editing
+   */
+  const getMessageImages = useCallback((message: ChatAgentUIMessage): MessageImagePart[] => {
+    if (!message.parts) return [];
+    const images: MessageImagePart[] = [];
+    for (const part of message.parts) {
+      if (part.type === "file") {
+        const filePart = part as { type: "file"; mediaType?: string; url?: string; data?: string };
+        if (filePart.mediaType?.startsWith("image/")) {
+          images.push({
+            mediaType: filePart.mediaType,
+            url: filePart.url,
+            data: filePart.data,
+          });
+        }
+      }
+    }
+    return images;
+  }, []);
+
+  /**
    * Handle editing a user message.
    * When a user edits a message, we:
    * 1. Remove all messages after the edited one
-   * 2. Update the edited message's text
+   * 2. Update the edited message's text and images
    * 3. Re-submit to get a new response
    */
   const handleEditMessage = useCallback(
-    (messageId: string, newText: string) => {
+    (messageId: string, newText: string, images: { file?: File; dataUrl: string; mediaType: string }[] = []) => {
       const messageIndex = messages.findIndex((m) => m.id === messageId);
       if (messageIndex === -1) return;
 
@@ -4020,7 +4446,28 @@ ${r.chunkText}
 
       // Send the edited message content
       setTimeout(() => {
-        sendMessage({ text: newText });
+        if (images.length > 0) {
+          // Build multimodal message with images
+          const imageParts = images.map(img => ({
+            type: "file" as const,
+            mediaType: img.mediaType,
+            url: img.dataUrl,
+          }));
+          
+          const parts: Array<{ type: "text"; text: string } | { type: "file"; mediaType: string; url: string }> = [
+            ...imageParts,
+          ];
+          
+          // Add text part if there's text content
+          if (newText.trim()) {
+            parts.push({ type: "text", text: newText });
+          }
+          
+          sendMessage({ parts });
+        } else {
+          // Simple text message
+          sendMessage({ text: newText });
+        }
       }, 50);
 
       setEditingMessageId(null);
@@ -4136,15 +4583,15 @@ ${r.chunkText}
       return (
         <div
           key={index}
-          className="my-3 p-4 bg-amber-50 border border-amber-200 rounded-xl"
+          className="my-3 p-4 bg-gray-50 border border-gray-200 rounded-xl dark:bg-neutral-800 dark:border-neutral-700"
         >
           <div className="flex items-start gap-3">
-            <IoAlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+            <IoAlertCircle className="w-5 h-5 text-gray-500 dark:text-neutral-400 mt-0.5" />
             <div className="flex-1">
-              <p className="font-medium text-amber-900">
+              <p className="font-medium text-gray-800 dark:text-neutral-200">
                 Tool requires approval: {toolName}
               </p>
-              <pre className="mt-2 text-sm text-amber-800 bg-amber-100 p-2 rounded overflow-x-auto">
+              <pre className="mt-2 text-sm text-gray-700 dark:text-neutral-300 bg-gray-100 dark:bg-neutral-700 p-2 rounded overflow-x-auto">
                 {JSON.stringify(invocation.input, null, 2)}
               </pre>
               <div className="mt-3 flex gap-2">
@@ -4232,6 +4679,11 @@ ${r.chunkText}
       return <WebSearchView key={index} invocation={invocation} />;
     }
 
+    // Chat history search tool - expressive neumorphic UI showing query and results
+    if (toolName === "chat_search") {
+      return <ChatSearchView key={index} invocation={invocation} />;
+    }
+
     // All other tools - use generic neumorphic UI
     return <GenericToolView key={index} toolName={toolName} invocation={invocation} />;
   };
@@ -4244,7 +4696,50 @@ ${r.chunkText}
       className="flex flex-col h-full w-full overflow-hidden relative bg-white dark:bg-neutral-950 neu-context-white"
     >
       {/* Header bar */}
-      <div className="flex items-center justify-end p-3 border-b border-gray-200 dark:border-neutral-800 h-[52px] flex-shrink-0">
+      <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-neutral-800 h-[52px] flex-shrink-0">
+        {/* Left side: Model selector + Token count */}
+        <div className="flex items-center gap-3">
+          {/* Model selector - pure neumorphic inset toggle */}
+          <button
+            onClick={() => {
+              const newTier = modelTier === "sonnet" ? "opus" : "sonnet";
+              console.log("[Model Selector] Switching from", modelTier, "to", newTier);
+              setModelTier(newTier);
+            }}
+            className={cn(
+              "relative px-4 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all duration-300 select-none",
+              // Pure neumorphic styling - no gray, uses page background
+              "bg-white dark:bg-neutral-950",
+              // Neumorphic inset effect
+              "shadow-[inset_2px_2px_5px_rgba(0,0,0,0.08),inset_-2px_-2px_5px_rgba(255,255,255,0.8)]",
+              "dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.4),inset_-2px_-2px_5px_rgba(255,255,255,0.03)]",
+              // Text color - dark grey for Sonnet, black for Opus
+              modelTier === "sonnet"
+                ? "text-gray-500 dark:text-neutral-400"
+                : "text-black dark:text-white",
+              // Hover - deeper inset
+              "hover:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.1),inset_-3px_-3px_6px_rgba(255,255,255,0.9)]",
+              "dark:hover:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.5),inset_-3px_-3px_6px_rgba(255,255,255,0.04)]",
+              // Active - even deeper inset
+              "active:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.12),inset_-4px_-4px_8px_rgba(255,255,255,0.7)]",
+              "dark:active:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.6),inset_-4px_-4px_8px_rgba(255,255,255,0.02)]"
+            )}
+            title={`Click to switch to ${modelTier === "sonnet" ? "Opus" : "Sonnet"}`}
+          >
+            <span className="relative z-10">
+              {modelTier === "sonnet" ? "Sonnet" : "Opus"}
+            </span>
+          </button>
+          
+          {/* Token count display */}
+          <span 
+            className="text-xs text-gray-400 dark:text-neutral-500 font-mono tabular-nums"
+            title={`Estimated ${tokenCount.toLocaleString()} tokens in this conversation`}
+          >
+            ~{formatTokenCount(tokenCount)} tokens
+          </span>
+        </div>
+        
         <h2 className="font-semibold text-gray-900 dark:text-neutral-500">Le Chat Noir</h2>
       </div>
 
@@ -4429,7 +4924,8 @@ ${r.chunkText}
                 {isEditing ? (
                   <MessageEditor
                     initialText={getMessageText(message)}
-                    onSave={(newText) => handleEditMessage(message.id, newText)}
+                    initialImages={getMessageImages(message)}
+                    onSave={(newText, images) => handleEditMessage(message.id, newText, images)}
                     onCancel={handleCancelEdit}
                     messagesAfterCount={messagesAfterCount}
                   />

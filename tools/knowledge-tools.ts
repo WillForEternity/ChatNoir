@@ -63,8 +63,10 @@ export const kbDeleteTool = tool({
 });
 
 export const kbSearchTool = tool({
-  description: `Hybrid search the knowledge base using both lexical (exact terms) and semantic (meaning) matching.
+  description: `Hybrid search the KNOWLEDGE BASE using both lexical (exact terms) and semantic (meaning) matching.
 Returns relevant chunks ranked by combined score (0-1).
+
+NOTE: This searches the Knowledge Base (user's saved notes/docs). For searching past chat history, use chat_search instead.
 
 SEARCH MODES (automatically detected):
 - Exact queries ("useState", "ECONNREFUSED", quoted phrases) → lexical-heavy (70% terms, 30% semantic)
@@ -95,7 +97,32 @@ LIMITATIONS (when to use kb_list + kb_read instead):
 Returns: Array of {filePath, chunkText, headingPath, score, matchedTerms}`,
   inputSchema: z.object({
     query: z.string().describe("Search query - can be natural language, exact terms, or quoted phrases"),
-    topK: z.number().optional().describe("Number of results (default: 5, max: 10)"),
+    topK: z.number().optional().describe("Number of results (default: 5, max: 25)"),
+  }),
+});
+
+export const chatSearchTool = tool({
+  description: `Semantic search across all CHAT HISTORY (past conversations).
+Returns relevant chunks from previous chats, ranked by similarity score (0-1).
+
+NOTE: This searches past chat conversations. For searching the Knowledge Base (saved notes/docs), use kb_search instead.
+
+WHEN TO USE:
+- Finding previous discussions on a topic
+- Recalling past decisions or recommendations
+- Getting context from earlier conversations
+- Referencing what was said in past chats
+
+INTERPRETING SCORES:
+- 0.7+: High relevance - directly discusses the topic
+- 0.5-0.7: Good relevance - related discussion
+- 0.3-0.5: Moderate relevance - tangentially related
+- <0.3: Not returned (filtered out)
+
+Returns: Array of {conversationTitle, chunkText, messageRole, score}`,
+  inputSchema: z.object({
+    query: z.string().describe("Search query - natural language question or topic"),
+    topK: z.number().optional().describe("Number of results (default: 5, max: 25)"),
   }),
 });
 
@@ -107,4 +134,5 @@ export const knowledgeTools = {
   kb_mkdir: kbMkdirTool,
   kb_delete: kbDeleteTool,
   kb_search: kbSearchTool,
+  chat_search: chatSearchTool,
 };

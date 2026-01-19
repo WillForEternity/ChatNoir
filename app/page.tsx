@@ -22,7 +22,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Chat from "@/components/ai-chat";
-import { ChatSidebar } from "@/components/chat-sidebar";
+import { ChatSidebar, type SidebarTab } from "@/components/chat-sidebar";
 import { useChatHistory } from "@/lib/use-chat-history";
 import type { UIMessage } from "ai";
 import type { KnowledgeBrowserRef } from "@/components/knowledge-browser";
@@ -54,6 +54,9 @@ export default function Home() {
   // Sidebar collapse state (persisted to localStorage)
   // Default to collapsed (closed) - user preference will override on mount
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  
+  // Sidebar tab state - controlled from here and the hamburger menu
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("chats");
 
   // Track all active chat sessions (keeps streaming chats alive when switching)
   const [activeSessions, setActiveSessions] = useState<ActiveChatSession[]>([]);
@@ -329,6 +332,8 @@ export default function Home() {
         isCollapsed={sidebarCollapsed}
         onToggleCollapse={handleToggleSidebar}
         knowledgeBrowserRef={knowledgeBrowserRef}
+        activeTab={sidebarTab}
+        onTabChange={setSidebarTab}
       />
 
       {/* Chat Area - render all active sessions, but only show the visible one */}

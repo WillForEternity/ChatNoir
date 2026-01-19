@@ -1,8 +1,9 @@
 /**
- * Generic Tool View
+ * Chat Search Tool View
  *
- * Beautiful neumorphic UI component for displaying any tool
- * invocation that doesn't have a specific custom view.
+ * Beautiful neumorphic UI component for displaying chat_search tool
+ * invocations with expressive animations and detailed result display.
+ * Shows the user what was searched and what was found in chat history.
  */
 
 "use client";
@@ -11,8 +12,10 @@ import React from "react";
 import { cn } from "@/lib/utils";
 import {
   IoCheckmarkCircle,
-  IoCog,
-  IoAlertCircle,
+  IoChatbubbles,
+  IoSearch,
+  IoPersonCircle,
+  IoSparkles,
 } from "react-icons/io5";
 import { AiOutlineLoading3Quarters } from "react-icons/ai";
 
@@ -40,9 +43,17 @@ interface ToolInvocation {
   output?: unknown;
 }
 
-interface GenericToolViewProps {
-  toolName: string;
+interface ChatSearchViewProps {
   invocation: ToolInvocation;
+}
+
+interface ChatSearchResultItem {
+  conversationId: string;
+  conversationTitle: string;
+  chunkText: string;
+  messageRole: "user" | "assistant";
+  score: number;
+  chunkIndex: number;
 }
 
 // =============================================================================
@@ -66,25 +77,10 @@ const neumorphicInset = cn(
 );
 
 // =============================================================================
-// HELPER FUNCTIONS
-// =============================================================================
-
-function formatToolName(name: string): string {
-  // Convert snake_case or camelCase to Title Case
-  return name
-    .replace(/_/g, " ")
-    .replace(/([A-Z])/g, " $1")
-    .replace(/^\s+/, "")
-    .split(" ")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ");
-}
-
-// =============================================================================
 // LOADING STATE COMPONENT
 // =============================================================================
 
-function ToolLoading({ toolName }: { toolName: string }) {
+function SearchLoading({ query }: { query?: string }) {
   return (
     <div className={cn(neumorphicBase, "relative my-3 p-4 overflow-hidden isolate")}>
       {/* Animated gradient background */}
@@ -113,13 +109,13 @@ function ToolLoading({ toolName }: { toolName: string }) {
           className={cn(
             "relative w-12 h-12 rounded-xl flex items-center justify-center",
             neumorphicInset,
-            "text-gray-500"
+            "text-gray-500 dark:text-neutral-400"
           )}
         >
-          <IoCog className="w-5 h-5" />
+          <IoChatbubbles className="w-5 h-5" />
           {/* Pulsing ring */}
           <div
-            className="absolute inset-0 rounded-xl border-2 border-current opacity-50 text-gray-500"
+            className="absolute inset-0 rounded-xl border-2 border-current opacity-50 text-gray-500 dark:text-neutral-400"
             style={{ animation: "pulse-glow 1.5s ease-in-out infinite" }}
           />
         </div>
@@ -127,13 +123,17 @@ function ToolLoading({ toolName }: { toolName: string }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-gray-700 dark:text-neutral-300">
-              {formatToolName(toolName)}
+              Searching Chat History
             </span>
-            <AiOutlineLoading3Quarters className="w-3.5 h-3.5 animate-spin text-gray-500" />
+            <AiOutlineLoading3Quarters
+              className="w-3.5 h-3.5 animate-spin text-gray-500 dark:text-neutral-400"
+            />
           </div>
-          <p className="text-xs text-gray-500 dark:text-neutral-400 mt-0.5">
-            Running...
-          </p>
+          {query && (
+            <p className="text-xs text-gray-500 dark:text-neutral-400 truncate mt-0.5">
+              &quot;{query}&quot;
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -141,30 +141,21 @@ function ToolLoading({ toolName }: { toolName: string }) {
 }
 
 // =============================================================================
-// SUCCESS STATE COMPONENT
+// RESULTS COMPONENT
 // =============================================================================
 
-function ToolResult({
-  toolName,
-  output,
+function SearchResults({
+  query,
+  results,
 }: {
-  toolName: string;
-  output: unknown;
+  query: string;
+  results: ChatSearchResultItem[];
 }) {
-  const hasError =
-    output &&
-    typeof output === "object" &&
-    "error" in output;
-
-  const outputStr =
-    typeof output === "string"
-      ? output
-      : JSON.stringify(output, null, 2);
-  
-  const preview = outputStr.length > 300 ? outputStr.substring(0, 300) + "..." : outputStr;
+  const isEmpty = !results || results.length === 0;
 
   return (
     <div className={cn(neumorphicBase, "my-3 p-4 isolate")}>
+      {/* Header */}
       <div className="flex items-center gap-3 mb-3">
         <div
           className={cn(
@@ -173,31 +164,89 @@ function ToolResult({
             "text-gray-500 dark:text-neutral-400"
           )}
         >
-          <IoCog className="w-5 h-5" />
+          <IoChatbubbles className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-gray-700 dark:text-neutral-300">
-              {formatToolName(toolName)}
+              Chat History Search
             </span>
             <IoCheckmarkCircle className="w-4 h-4 text-gray-500 dark:text-neutral-400" />
+            {/* Semantic search badge */}
+            <span
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded text-gray-600 bg-gray-100 dark:bg-neutral-700/50 dark:text-neutral-300"
+              title="Meaning-based search across past conversations"
+            >
+              Semantic
+            </span>
           </div>
-          <p className="text-xs text-gray-500 dark:text-neutral-400">
-            {hasError ? "Failed" : "Completed"}
+          <p className="text-xs text-gray-500 dark:text-neutral-400 truncate">
+            &quot;{query}&quot;
           </p>
         </div>
+        {!isEmpty && (
+          <span className="text-xs font-medium text-gray-600 bg-gray-100 dark:bg-neutral-700/50 dark:text-neutral-300 px-2 py-1 rounded-full">
+            {results.length} result{results.length !== 1 ? "s" : ""}
+          </span>
+        )}
       </div>
 
-      <div className={cn(neumorphicInset, "p-3")}>
-        <pre
+      {/* Empty state */}
+      {isEmpty ? (
+        <div
           className={cn(
-            "text-xs whitespace-pre-wrap font-mono leading-relaxed",
-            "text-gray-600 dark:text-neutral-400"
+            neumorphicInset,
+            "p-3 text-center text-sm text-gray-500 dark:text-neutral-400"
           )}
         >
-          {preview}
-        </pre>
-      </div>
+          No matching content found in chat history
+        </div>
+      ) : (
+        <div className={cn(neumorphicInset, "p-2")}>
+          {/* Grid layout for results - compact cards */}
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+            {results.map((result, i) => {
+              const isUser = result.messageRole === "user";
+              const RoleIcon = isUser ? IoPersonCircle : IoSparkles;
+              const preview = result.chunkText.length > 60 
+                ? result.chunkText.substring(0, 60) + "…" 
+                : result.chunkText;
+
+              return (
+                <div
+                  key={i}
+                  className={cn(
+                    "p-2 rounded-lg flex flex-col gap-1",
+                    "bg-white dark:bg-neutral-800",
+                    "shadow-[1px_1px_3px_rgba(0,0,0,0.06),-1px_-1px_3px_rgba(255,255,255,0.7)]",
+                    "dark:shadow-[1px_1px_3px_rgba(0,0,0,0.25),-1px_-1px_3px_rgba(255,255,255,0.02)]",
+                    "cursor-default"
+                  )}
+                  title={`${result.conversationTitle || "Untitled"}\n${isUser ? "You" : "Claude"} • ${Math.round(result.score * 100)}%\n${result.chunkText.substring(0, 200)}...`}
+                >
+                  {/* Header with role icon and score */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      <RoleIcon className="w-3 h-3 text-gray-400 dark:text-neutral-500" />
+                      <span className="text-[10px] text-gray-400 dark:text-neutral-500">
+                        {isUser ? "You" : "Claude"}
+                      </span>
+                    </div>
+                    <span className="text-xs font-semibold text-gray-600 dark:text-neutral-400">
+                      {Math.round(result.score * 100)}%
+                    </span>
+                  </div>
+                  
+                  {/* Message preview */}
+                  <p className="text-xs text-gray-600 dark:text-neutral-400 line-clamp-3 leading-tight">
+                    {preview}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -206,7 +255,9 @@ function ToolResult({
 // MAIN COMPONENT
 // =============================================================================
 
-export function GenericToolView({ toolName, invocation }: GenericToolViewProps) {
+export function ChatSearchView({ invocation }: ChatSearchViewProps) {
+  const query = (invocation.input?.query as string) || "";
+
   // AI SDK v6 uses input-streaming and input-available for loading states
   // We also support legacy state names for backwards compatibility
   const isLoading =
@@ -216,22 +267,24 @@ export function GenericToolView({ toolName, invocation }: GenericToolViewProps) 
     invocation.state === "call" ||            // Legacy
     invocation.state === "output-pending";    // Legacy
 
-  // Loading state
+  // Loading state - show animation while search is in progress
   if (isLoading) {
-    return <ToolLoading toolName={toolName} />;
+    return <SearchLoading query={query || undefined} />;
   }
 
   // Completed state
-  if (invocation.state === "output-available") {
-    return <ToolResult toolName={toolName} output={invocation.output} />;
+  if (invocation.state === "output-available" && invocation.output) {
+    const output = invocation.output as Record<string, unknown>;
+    const results = (output.results as ChatSearchResultItem[]) || [];
+    return <SearchResults query={query} results={results} />;
   }
 
   // Error state
   if (invocation.state === "output-error") {
-    return <ToolResult toolName={toolName} output={invocation.output ?? { error: "Tool execution failed" }} />;
+    return <SearchLoading query={query || undefined} />;
   }
 
   return null;
 }
 
-export default GenericToolView;
+export default ChatSearchView;

@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { ChatConversation, ChatHistoryState } from "@/lib/chat-types";
+import { embedChatIfChanged, deleteChatEmbeddings } from "./chat-embeddings-ops";
 
 const DB_NAME = "chat_history_v1";
 const DB_VERSION = 1;
@@ -162,9 +163,12 @@ export async function saveChatState(state: ChatHistoryState): Promise<void> {
     conversationStore.put(conversation);
   });
 
+  // Track deleted conversations for embedding cleanup
+  const deletedKeys: string[] = [];
   existingKeys.forEach((key) => {
     if (!nextKeys.has(String(key))) {
       conversationStore.delete(key);
+      deletedKeys.push(String(key));
     }
   });
 
@@ -175,6 +179,21 @@ export async function saveChatState(state: ChatHistoryState): Promise<void> {
   await tx.done;
 
   persistSummary(normalized);
+
+  // Auto-embed conversations in background (non-blocking)
+  // Uses hash-based caching so unchanged content won't re-embed
+  for (const conversation of normalized.conversations) {
+    embedChatIfChanged(conversation).catch((error) => {
+      console.error("[ChatStore] Failed to embed conversation:", error);
+    });
+  }
+
+  // Clean up embeddings for deleted conversations
+  for (const deletedId of deletedKeys) {
+    deleteChatEmbeddings(deletedId).catch((error) => {
+      console.error("[ChatStore] Failed to delete embeddings:", error);
+    });
+  }
 }
 
 export async function clearChatState(): Promise<void> {
