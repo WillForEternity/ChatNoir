@@ -3299,11 +3299,27 @@ export default function Chat({
   // Maps image URLs to their calculated token counts
   const [imageTokens, setImageTokens] = useState<Map<string, number>>(new Map());
   
+  // Dark mode detection for blob cat styling
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  
   // Ref to always have latest modelTier available (avoids stale closure in transport)
   const modelTierRef = useRef<ModelTier>(modelTier);
   useEffect(() => {
     modelTierRef.current = modelTier;
   }, [modelTier]);
+  
+  // Detect dark mode for blob cat styling
+  useEffect(() => {
+    const checkDarkMode = () => {
+      setIsDarkMode(document.documentElement.classList.contains("dark"));
+    };
+    checkDarkMode();
+    
+    const observer = new MutationObserver(checkDarkMode);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    
+    return () => observer.disconnect();
+  }, []);
 
   // ---------------------------------------------------------------------------
   // AUTHENTICATION & API KEYS (BYOK)
@@ -5080,9 +5096,9 @@ ${n.links.incoming.length > 0 ? `<incoming>${n.links.incoming.map((l) => `<link 
                 .blob-container:hover {
                   transform: scale(1.15);
                 }
-                .blob-container:hover .blob-text {
-                  fill: white;
-                  mix-blend-mode: overlay;
+.blob-container:hover .blob-text {
+                  fill: #ff00ff;
+                  mix-blend-mode: normal;
                 }
                 .blob-container:hover .cat-image {
                   opacity: 1;
@@ -5094,7 +5110,7 @@ ${n.links.incoming.length > 0 ? `<incoming>${n.links.incoming.map((l) => `<link 
                   font: 700 10px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
                   letter-spacing: 1.5px;
                   text-transform: uppercase;
-                  fill: #1f2937;
+                  fill: #ff00ff;
                   mix-blend-mode: normal;
                   transition: ease fill 0.5s;
                 }
@@ -5116,9 +5132,9 @@ ${n.links.incoming.length > 0 ? `<incoming>${n.links.incoming.map((l) => `<link 
                   {/* Gradient background for blob */}
                   <defs>
                     <linearGradient id={`blobGradient-${chatId}`} x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#1a1a2e" />
-                      <stop offset="50%" stopColor="#16213e" />
-                      <stop offset="100%" stopColor="#0f3460" />
+                      <stop offset="0%" stopColor="transparent" />
+                      <stop offset="50%" stopColor="transparent" />
+                      <stop offset="100%" stopColor="transparent" />
                     </linearGradient>
                     {/* Clip path using the blob shape */}
                     <clipPath id={`blobClip-${chatId}`}>
@@ -5126,18 +5142,16 @@ ${n.links.incoming.length > 0 ? `<incoming>${n.links.incoming.map((l) => `<link 
                         d="M43.1,-68.5C56.2,-58.6,67.5,-47.3,72.3,-33.9C77.2,-20.5,75.5,-4.9,74.2,11.3C72.9,27.6,71.9,44.5,63.8,57.2C55.7,69.8,40.6,78.2,25.5,79.2C10.4,80.1,-4.7,73.6,-20.9,69.6C-37.1,65.5,-54.5,63.9,-66,54.8C-77.5,45.8,-83.2,29.3,-85.7,12.3C-88.3,-4.8,-87.7,-22.3,-79.6,-34.8C-71.5,-47.3,-55.8,-54.9,-41.3,-64.2C-26.7,-73.6,-13.4,-84.7,0.8,-86C15,-87.2,29.9,-78.5,43.1,-68.5Z"
                       />
                     </clipPath>
-                    {/* Filter to colorize black strokes with the gradient colors */}
-                    <filter id={`colorize-${chatId}`} colorInterpolationFilters="sRGB">
-                      {/* Convert to grayscale first */}
-                      <feColorMatrix type="matrix" values="0.33 0.33 0.33 0 0 0.33 0.33 0.33 0 0 0.33 0.33 0.33 0 0 0 0 0 1 0" result="gray"/>
-                      {/* Invert so black becomes white (will pick up gradient) */}
-                      <feComponentTransfer result="inverted">
+                    {/* Filter for dark mode: invert and colorize to neon pink */}
+                    <filter id={`neonPink-${chatId}`} colorInterpolationFilters="sRGB">
+                      {/* Invert the image (white becomes black, black becomes white) */}
+                      <feComponentTransfer>
                         <feFuncR type="table" tableValues="1 0"/>
                         <feFuncG type="table" tableValues="1 0"/>
                         <feFuncB type="table" tableValues="1 0"/>
                       </feComponentTransfer>
-                      {/* Use as alpha mask */}
-                      <feColorMatrix type="matrix" values="0 0 0 0 0.094 0 0 0 0 0.129 0 0 0 0 0.376 1 0 0 0 0" result="colored"/>
+                      {/* Colorize to neon pink - multiply with magenta */}
+                      <feColorMatrix type="matrix" values="1 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 1 0"/>
                     </filter>
                     {/* Text path defined in defs - uses chatId to ensure uniqueness */}
                     <path
@@ -5159,10 +5173,9 @@ ${n.links.incoming.length > 0 ? `<incoming>${n.links.incoming.map((l) => `<link 
                     />
                     
                     {/* Cat image - clipped to blob shape, fades in on hover */}
+                    {/* Conditionally render based on dark mode */}
                     <g clipPath={`url(#blobClip-${chatId})`} className="cat-image">
-                      {/* White background for the cat */}
-                      <rect x="-100" y="-100" width="200" height="200" fill="white" />
-                      {/* The cat image with gradient overlay effect - smaller size = zoomed out */}
+                      <rect x="-100" y="-100" width="200" height="200" fill={isDarkMode ? "black" : "white"} />
                       <image
                         href="/ChatNoire.png"
                         x="-60"
@@ -5170,16 +5183,8 @@ ${n.links.incoming.length > 0 ? `<incoming>${n.links.incoming.map((l) => `<link 
                         width="120"
                         height="120"
                         preserveAspectRatio="xMidYMid meet"
-                        style={{ mixBlendMode: "multiply" }}
-                      />
-                      {/* Gradient overlay that shows through the black strokes */}
-                      <rect 
-                        x="-100" 
-                        y="-100" 
-                        width="200" 
-                        height="200" 
-                        fill={`url(#blobGradient-${chatId})`}
-                        style={{ mixBlendMode: "screen" }}
+                        style={isDarkMode ? undefined : { mixBlendMode: "multiply" }}
+                        filter={isDarkMode ? `url(#neonPink-${chatId})` : undefined}
                       />
                     </g>
                     
@@ -5442,7 +5447,7 @@ ${n.links.incoming.length > 0 ? `<incoming>${n.links.incoming.map((l) => `<link 
                     onClick={handleAttachment}
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-xl text-sm font-medium text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-750 hover:border-gray-300 dark:hover:border-neutral-600 transition-all shadow-sm"
                   >
-                    <IoDocumentText className="w-4 h-4 text-blue-500" />
+                    <IoDocumentText className="w-4 h-4 text-emerald-500" />
                     <span>Documents</span>
                   </button>
                   <button

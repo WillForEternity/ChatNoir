@@ -417,7 +417,7 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
   if (isLoading) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full", className)}>
-        <Loader2 className="w-8 h-8 animate-spin text-neutral-500 mb-3" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-3" />
         <p className="text-sm text-gray-500 dark:text-neutral-400">Loading chat embeddings...</p>
       </div>
     );
@@ -426,8 +426,8 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
   if (embeddings.length === 0) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full px-6", className)}>
-        <div className="w-16 h-16 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center mb-4">
-          <MessageSquare className="w-8 h-8 text-neutral-500" />
+        <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center mb-4">
+          <MessageSquare className="w-8 h-8 text-blue-500" />
         </div>
         <h3 className="text-sm font-medium text-gray-700 dark:text-neutral-300 mb-2">
           No Chat Embeddings Yet
@@ -441,8 +441,8 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
           className={cn(
             "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
             isReindexing
-              ? "bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 cursor-wait"
-              : "bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
+              ? "bg-blue-200 dark:bg-blue-800 text-blue-700 dark:text-blue-300 cursor-wait"
+              : "bg-blue-500 text-white hover:bg-blue-600"
           )}
         >
           <RefreshCw className={cn("w-4 h-4", isReindexing && "animate-spin")} />
@@ -456,7 +456,7 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
             </div>
             <div className="h-1.5 bg-gray-200 dark:bg-neutral-700 rounded-full overflow-hidden">
               <div
-                className="h-full bg-neutral-900 dark:bg-neutral-100 transition-all duration-300 ease-out"
+                className="h-full bg-blue-500 transition-all duration-300 ease-out"
                 style={{
                   width: reindexProgress.total > 0
                     ? `${(reindexProgress.current / reindexProgress.total) * 100}%`
@@ -566,8 +566,8 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
               className={cn(
                 "flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all",
                 isReindexing
-                  ? "bg-neutral-200 dark:bg-neutral-700 text-neutral-500 cursor-wait"
-                  : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                  ? "bg-blue-100 dark:bg-blue-900/30 text-blue-500 cursor-wait"
+                  : "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40"
               )}
               title="Reindex all chats"
             >
@@ -586,7 +586,7 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
             </div>
             <div className="h-1.5 bg-gray-200 dark:bg-neutral-700 rounded-full overflow-hidden">
               <div
-                className="h-full bg-neutral-500 transition-all duration-300 ease-out"
+                className="h-full bg-blue-500 transition-all duration-300 ease-out"
                 style={{
                   width: reindexProgress.total > 0
                     ? `${(reindexProgress.current / reindexProgress.total) * 100}%`

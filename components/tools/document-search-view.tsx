@@ -501,10 +501,10 @@ function ListResults({ documents }: { documents: LargeDocumentMetadata[] }) {
                   className={cn(
                     "text-[10px] font-medium px-1.5 py-0.5 rounded flex-shrink-0",
                     doc.status === "ready"
-                      ? "text-gray-600 bg-gray-100 dark:bg-neutral-700/50 dark:text-neutral-300"
+                      ? "text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300"
                       : doc.status === "error"
                       ? "text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-300"
-                      : "text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300"
+                      : "text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300"
                   )}
                 >
                   {doc.status}

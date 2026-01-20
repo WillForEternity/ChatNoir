@@ -1028,8 +1028,8 @@ export function KnowledgeGraphViewer({ className }: { className?: string }) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full bg-gray-50 dark:bg-neutral-900", className)}>
         <div className="relative">
-          <div className="absolute inset-0 rounded-full bg-purple-500/20 animate-ping" />
-          <Loader2 className="w-8 h-8 animate-spin text-purple-500 relative" />
+          <div className="absolute inset-0 rounded-full bg-amber-500/20 animate-ping" />
+          <Loader2 className="w-8 h-8 animate-spin text-amber-500 relative" />
         </div>
         <p className="text-sm text-gray-500 dark:text-neutral-400 mt-4">Loading knowledge graph...</p>
       </div>
@@ -1039,12 +1039,12 @@ export function KnowledgeGraphViewer({ className }: { className?: string }) {
   if (links.length === 0) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full px-6 bg-gray-50 dark:bg-neutral-900", className)}>
-        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-100 to-violet-100 dark:from-purple-900/40 dark:to-violet-900/40 flex items-center justify-center mb-5 shadow-lg">
-          <Info className="w-10 h-10 text-purple-500" />
+        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/40 dark:to-orange-900/40 flex items-center justify-center mb-5 shadow-lg">
+          <Info className="w-10 h-10 text-amber-500" />
         </div>
         <h3 className="text-base font-semibold text-gray-800 dark:text-neutral-200 mb-2">No Links Yet</h3>
         <p className="text-sm text-gray-500 dark:text-neutral-400 text-center max-w-sm leading-relaxed">
-          Create relationships between files in your knowledge base using the <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-neutral-800 rounded text-purple-600 dark:text-purple-400 text-xs">kb_link</code> tool to visualize connections here.
+          Create relationships between files in your knowledge base using the <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-neutral-800 rounded text-amber-600 dark:text-amber-400 text-xs">kb_link</code> tool to visualize connections here.
         </p>
       </div>
     );

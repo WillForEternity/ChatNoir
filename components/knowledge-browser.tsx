@@ -75,7 +75,7 @@ const markdownComponents = {
   ol: ({ children }: any) => <ol className="my-2 ml-4 list-decimal space-y-1 text-sm">{children}</ol>,
   li: ({ children }: any) => <li className="leading-6">{children}</li>,
   blockquote: ({ children }: any) => (
-    <blockquote className="my-2 border-l-2 border-blue-500 dark:border-neutral-500 pl-3 py-1 bg-blue-50 dark:bg-neutral-800/50 rounded-r italic text-sm">
+    <blockquote className="my-2 border-l-2 border-purple-500 dark:border-neutral-500 pl-3 py-1 bg-purple-50 dark:bg-neutral-800/50 rounded-r italic text-sm">
       {children}
     </blockquote>
   ),
@@ -251,7 +251,7 @@ export const KnowledgeBrowser = forwardRef<KnowledgeBrowserRef, KnowledgeBrowser
             className={cn(
               "group flex items-center gap-1 px-2 py-1.5 text-sm rounded-lg cursor-pointer transition-colors",
               isSelected
-                ? "bg-blue-50 dark:bg-neutral-800/50 text-blue-700 dark:text-neutral-300"
+                ? "bg-purple-50 dark:bg-neutral-800/50 text-purple-700 dark:text-neutral-300"
                 : "hover:bg-gray-100 dark:hover:bg-neutral-800 text-gray-700 dark:text-neutral-300"
             )}
             style={{ paddingLeft: depth * 12 + 8 }}
@@ -272,7 +272,7 @@ export const KnowledgeBrowser = forwardRef<KnowledgeBrowserRef, KnowledgeBrowser
               ) : (
                 <>
                   <span className="w-3.5 flex-shrink-0" />
-                  <FileText className="w-4 h-4 flex-shrink-0 text-blue-500" />
+                  <FileText className="w-4 h-4 flex-shrink-0 text-purple-500" />
                 </>
               )}
               <span className="truncate">{node.name}</span>
@@ -336,8 +336,8 @@ export const KnowledgeBrowser = forwardRef<KnowledgeBrowserRef, KnowledgeBrowser
               className={cn(
                 "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all",
                 isReindexing
-                  ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 cursor-wait"
-                  : "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40"
+                  ? "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 cursor-wait"
+                  : "bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/40"
               )}
               title="Reindex all files for semantic search"
             >
@@ -355,7 +355,7 @@ export const KnowledgeBrowser = forwardRef<KnowledgeBrowserRef, KnowledgeBrowser
               </div>
               <div className="h-1.5 bg-gray-200 dark:bg-neutral-700 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-indigo-500 transition-all duration-300 ease-out"
+                  className="h-full bg-purple-500 transition-all duration-300 ease-out"
                   style={{
                     width: reindexProgress.total > 0
                       ? `${(reindexProgress.current / reindexProgress.total) * 100}%`
@@ -401,7 +401,7 @@ export const KnowledgeBrowser = forwardRef<KnowledgeBrowserRef, KnowledgeBrowser
               className={cn(
                 "absolute top-0 left-0 right-0 h-1 cursor-ns-resize z-10 transition-colors",
                 isResizingPreview 
-                  ? "bg-blue-500" 
+                  ? "bg-purple-500" 
                   : "bg-transparent hover:bg-gray-300 dark:hover:bg-neutral-600"
               )}
             />

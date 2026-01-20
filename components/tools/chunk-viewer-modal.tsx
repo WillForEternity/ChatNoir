@@ -153,22 +153,22 @@ function getTypeIcon(type: ChunkType) {
 function getTypeColor(type: ChunkType) {
   switch (type) {
     case "knowledge":
-      return "text-gray-500 dark:text-neutral-400";
+      return "text-purple-500 dark:text-purple-400";
     case "document":
-      return "text-gray-500 dark:text-neutral-400";
+      return "text-emerald-500 dark:text-emerald-400";
     case "chat":
-      return "text-gray-500 dark:text-neutral-400";
+      return "text-blue-500 dark:text-blue-400";
   }
 }
 
 function getTypeBadge(type: ChunkType) {
   switch (type) {
     case "knowledge":
-      return { label: "Knowledge Base", color: "bg-gray-100 text-gray-600 dark:bg-neutral-700/50 dark:text-neutral-300" };
+      return { label: "Knowledge Base", color: "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-300" };
     case "document":
-      return { label: "Document", color: "bg-gray-100 text-gray-600 dark:bg-neutral-700/50 dark:text-neutral-300" };
+      return { label: "Document", color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300" };
     case "chat":
-      return { label: "Chat History", color: "bg-gray-100 text-gray-600 dark:bg-neutral-700/50 dark:text-neutral-300" };
+      return { label: "Chat History", color: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300" };
   }
 }
 

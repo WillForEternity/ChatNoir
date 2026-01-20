@@ -323,7 +323,7 @@ Look for signals that stored context would help:
 
 ## Web Search
 
-You have access to real-time web search via the \`web_search\` tool. Use it LIBERALLY when:
+You have access to real-time web search via the \`web_search\` tool. Use it when:
 - The user asks about current events, news, or recent information
 - You need up-to-date documentation, APIs, or technical information
 - The user explicitly asks you to search the web
