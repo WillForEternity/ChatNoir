@@ -50,7 +50,7 @@ interface ViewState {
 // CONSTANTS
 // =============================================================================
 
-const MIN_SCALE = 0.2;
+const MIN_SCALE_ABSOLUTE = 0.02; // Absolute minimum, never go below this
 const MAX_SCALE = 4;
 const NODE_PADDING_X = 12;
 const NODE_PADDING_Y = 8;
@@ -357,6 +357,7 @@ export function KnowledgeGraphViewer({ className }: { className?: string }) {
   const [, forceRender] = useState(0);
   const [showLegend, setShowLegend] = useState(false);
   const [layoutSaved, setLayoutSaved] = useState(false);
+  const [minScale, setMinScale] = useState(MIN_SCALE_ABSOLUTE); // Dynamic min scale based on fit-to-view
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -404,6 +405,9 @@ export function KnowledgeGraphViewer({ className }: { className?: string }) {
 
   // Track if we need to save (using ref to avoid dependency issues)
   const needsSaveRef = useRef(false);
+  // Track if we need to fit view after layout is ready
+  const needsFitViewRef = useRef(false);
+  const hasFittedRef = useRef(false);
 
   // Load data
   const loadData = useCallback(async (forceRecompute = false) => {
@@ -411,6 +415,8 @@ export function KnowledgeGraphViewer({ className }: { className?: string }) {
     setCacheStatus("loading");
     setLayoutSaved(false);
     needsSaveRef.current = true;
+    hasFittedRef.current = false;
+    needsFitViewRef.current = true;
     
     try {
       // Load links, stats, and cached layout in parallel
@@ -427,10 +433,16 @@ export function KnowledgeGraphViewer({ className }: { className?: string }) {
       if (!simulationRef.current) {
         simulationRef.current = new ForceSimulation(() => {
           forceRender((n) => n + 1);
-          // Check if we should save cache
-          if (simulationRef.current?.isSettled() && needsSaveRef.current) {
-            needsSaveRef.current = false;
-            scheduleCacheSave();
+          // Check if we should save cache or fit view when settled
+          if (simulationRef.current?.isSettled()) {
+            if (needsSaveRef.current) {
+              needsSaveRef.current = false;
+              scheduleCacheSave();
+            }
+            // Trigger fit-to-view check by forcing a re-render
+            if (needsFitViewRef.current && !hasFittedRef.current) {
+              forceRender((n) => n + 1);
+            }
           }
         });
       }
@@ -460,7 +472,7 @@ export function KnowledgeGraphViewer({ className }: { className?: string }) {
             needsSaveRef.current = false;
             console.log("[GraphViewer] Loaded layout from cache");
             // Don't run simulation - positions are static from cache
-            forceRender((n) => n + 1); // Trigger render
+            forceRender((n) => n + 1); // Trigger render and fit view
             return;
           }
         }
@@ -484,6 +496,72 @@ export function KnowledgeGraphViewer({ className }: { className?: string }) {
       }
     };
   }, [loadData]);
+
+  // Fit to view when nodes are ready (after loading or simulation settles)
+  useEffect(() => {
+    const simulation = simulationRef.current;
+    const container = containerRef.current;
+    if (!simulation || !container || simulation.nodes.size === 0) return;
+    if (!needsFitViewRef.current || hasFittedRef.current) return;
+
+    // For cached layouts, fit immediately
+    // For computed layouts, wait until simulation settles
+    const shouldFit = cacheStatus === "cached" || simulation.isSettled();
+    
+    if (shouldFit) {
+      const rect = container.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        // Small delay to ensure container is properly sized
+        requestAnimationFrame(() => {
+          if (needsFitViewRef.current && !hasFittedRef.current) {
+            hasFittedRef.current = true;
+            needsFitViewRef.current = false;
+            
+            const width = rect.width;
+            const height = rect.height;
+            const baseScale = Math.min(width, height) * 0.4;
+
+            // Find bounding box of all nodes
+            const nodes = Array.from(simulation.nodes.values());
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+
+            for (const node of nodes) {
+              const label = getFileName(node.id);
+              const nodeHalfWidth = (label.length * NODE_FONT_SIZE * 0.6 + NODE_PADDING_X * 2) / 2 / baseScale;
+              const nodeHalfHeight = (NODE_FONT_SIZE + NODE_PADDING_Y * 2) / 2 / baseScale;
+              
+              minX = Math.min(minX, node.x - nodeHalfWidth);
+              maxX = Math.max(maxX, node.x + nodeHalfWidth);
+              minY = Math.min(minY, node.y - nodeHalfHeight);
+              maxY = Math.max(maxY, node.y + nodeHalfHeight);
+            }
+
+            // Add padding
+            const padding = 0.15;
+            const rangeX = (maxX - minX) * (1 + padding * 2);
+            const rangeY = (maxY - minY) * (1 + padding * 2);
+            const centerNodeX = (minX + maxX) / 2;
+            const centerNodeY = (minY + maxY) / 2;
+
+            // Calculate optimal scale (this becomes the minimum zoom level)
+            const scaleX = width / (rangeX * baseScale);
+            const scaleY = height / (rangeY * baseScale);
+            const fitScale = Math.max(MIN_SCALE_ABSOLUTE, Math.min(MAX_SCALE, Math.min(scaleX, scaleY)));
+
+            // Set the dynamic minimum scale to the fit-to-view scale
+            setMinScale(fitScale);
+
+            // Calculate offset to center
+            const offsetX = -centerNodeX * baseScale * fitScale;
+            const offsetY = -centerNodeY * baseScale * fitScale;
+
+            setViewState({ offsetX, offsetY, scale: fitScale });
+          }
+        });
+      }
+    }
+  }, [cacheStatus, links]); // Trigger on cache status change or links update
 
   // Calculate node dimensions for hit testing
   const getNodeDimensions = useCallback((node: GraphNodeData, scale: number) => {
@@ -523,9 +601,9 @@ export function KnowledgeGraphViewer({ className }: { className?: string }) {
 
     // Detect dark mode
     const isDark = document.documentElement.classList.contains("dark");
-    const bgColor = isDark ? "#171717" : "#fafafa";
+    const bgColor = isDark ? "#0a0a0a" : "#fafafa"; // neutral-950 - matches app dark mode
     const textColor = isDark ? "#e5e5e5" : "#374151";
-    const subtleColor = isDark ? "#404040" : "#e5e7eb";
+    const subtleColor = isDark ? "#171717" : "#e5e7eb"; // neutral-900 - subtle grid on dark bg
 
     // Clear with background
     ctx.fillStyle = bgColor;
@@ -534,7 +612,7 @@ export function KnowledgeGraphViewer({ className }: { className?: string }) {
     // Draw subtle grid pattern
     ctx.strokeStyle = subtleColor;
     ctx.lineWidth = 0.5;
-    ctx.globalAlpha = 0.3;
+    ctx.globalAlpha = isDark ? 0.5 : 0.3;
     const gridSize = 40 * viewState.scale;
     const offsetXMod = viewState.offsetX % gridSize;
     const offsetYMod = viewState.offsetY % gridSize;
@@ -970,15 +1048,70 @@ export function KnowledgeGraphViewer({ className }: { className?: string }) {
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
     setViewState((prev) => ({
       ...prev,
-      scale: Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * delta)),
+      scale: Math.max(minScale, Math.min(MAX_SCALE, prev.scale * delta)),
     }));
+  }, [minScale]);
+
+  // Fit all nodes in view - calculates optimal scale and offset
+  const fitToView = useCallback(() => {
+    const container = containerRef.current;
+    const simulation = simulationRef.current;
+    if (!container || !simulation || simulation.nodes.size === 0) return;
+
+    const rect = container.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    const baseScale = Math.min(width, height) * 0.4;
+
+    // Find bounding box of all nodes in normalized coordinates
+    const nodes = Array.from(simulation.nodes.values());
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+
+    for (const node of nodes) {
+      // Account for node width (approximate)
+      const label = getFileName(node.id);
+      const nodeHalfWidth = (label.length * NODE_FONT_SIZE * 0.6 + NODE_PADDING_X * 2) / 2 / baseScale;
+      const nodeHalfHeight = (NODE_FONT_SIZE + NODE_PADDING_Y * 2) / 2 / baseScale;
+      
+      minX = Math.min(minX, node.x - nodeHalfWidth);
+      maxX = Math.max(maxX, node.x + nodeHalfWidth);
+      minY = Math.min(minY, node.y - nodeHalfHeight);
+      maxY = Math.max(maxY, node.y + nodeHalfHeight);
+    }
+
+    // Add padding (10% on each side)
+    const padding = 0.15;
+    const rangeX = (maxX - minX) * (1 + padding * 2);
+    const rangeY = (maxY - minY) * (1 + padding * 2);
+    const centerNodeX = (minX + maxX) / 2;
+    const centerNodeY = (minY + maxY) / 2;
+
+    // Calculate scale to fit all nodes
+    // We need: rangeX * baseScale * scale <= width AND rangeY * baseScale * scale <= height
+    const scaleX = width / (rangeX * baseScale);
+    const scaleY = height / (rangeY * baseScale);
+    const fitScale = Math.max(MIN_SCALE_ABSOLUTE, Math.min(MAX_SCALE, Math.min(scaleX, scaleY)));
+
+    // Update the dynamic minimum scale
+    setMinScale(fitScale);
+
+    // Calculate offset to center the nodes
+    // toCanvasX = centerX + (x * baseScale * scale) + offsetX
+    // We want the center of nodes (centerNodeX, centerNodeY) to map to canvas center (width/2, height/2)
+    // So: width/2 = width/2 + (centerNodeX * baseScale * scale) + offsetX
+    // => offsetX = -centerNodeX * baseScale * scale
+    const offsetX = -centerNodeX * baseScale * fitScale;
+    const offsetY = -centerNodeY * baseScale * fitScale;
+
+    setViewState({ offsetX, offsetY, scale: fitScale });
   }, []);
 
   // Zoom controls
   const zoomIn = () => setViewState((prev) => ({ ...prev, scale: Math.min(MAX_SCALE, prev.scale * 1.3) }));
-  const zoomOut = () => setViewState((prev) => ({ ...prev, scale: Math.max(MIN_SCALE, prev.scale / 1.3) }));
+  const zoomOut = () => setViewState((prev) => ({ ...prev, scale: Math.max(minScale, prev.scale / 1.3) }));
   const resetView = () => {
-    setViewState({ offsetX: 0, offsetY: 0, scale: 1 });
+    fitToView();
   };
   const recomputeLayout = () => {
     setLayoutSaved(false);
@@ -1026,10 +1159,10 @@ export function KnowledgeGraphViewer({ className }: { className?: string }) {
 
   if (isLoading) {
     return (
-      <div className={cn("flex flex-col items-center justify-center h-full bg-gray-50 dark:bg-neutral-900", className)}>
+      <div className={cn("flex flex-col items-center justify-center h-full bg-gray-50 dark:bg-neutral-950", className)}>
         <div className="relative">
-          <div className="absolute inset-0 rounded-full bg-amber-500/20 animate-ping" />
-          <Loader2 className="w-8 h-8 animate-spin text-amber-500 relative" />
+          <div className="absolute inset-0 rounded-full bg-fuchsia-500/20 dark:bg-[#ff00ff]/20 animate-ping" />
+          <Loader2 className="w-8 h-8 animate-spin text-fuchsia-500 dark:text-[#ff00ff] relative" />
         </div>
         <p className="text-sm text-gray-500 dark:text-neutral-400 mt-4">Loading knowledge graph...</p>
       </div>
@@ -1038,20 +1171,20 @@ export function KnowledgeGraphViewer({ className }: { className?: string }) {
 
   if (links.length === 0) {
     return (
-      <div className={cn("flex flex-col items-center justify-center h-full px-6 bg-gray-50 dark:bg-neutral-900", className)}>
-        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/40 dark:to-orange-900/40 flex items-center justify-center mb-5 shadow-lg">
-          <Info className="w-10 h-10 text-amber-500" />
+      <div className={cn("flex flex-col items-center justify-center h-full px-6 bg-gray-50 dark:bg-neutral-950", className)}>
+        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-fuchsia-100 to-pink-100 dark:from-fuchsia-900/40 dark:to-pink-900/40 flex items-center justify-center mb-5 shadow-lg">
+          <Info className="w-10 h-10 text-fuchsia-500 dark:text-[#ff00ff]" />
         </div>
         <h3 className="text-base font-semibold text-gray-800 dark:text-neutral-200 mb-2">No Links Yet</h3>
         <p className="text-sm text-gray-500 dark:text-neutral-400 text-center max-w-sm leading-relaxed">
-          Create relationships between files in your knowledge base using the <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-neutral-800 rounded text-amber-600 dark:text-amber-400 text-xs">kb_link</code> tool to visualize connections here.
+          Create relationships between files in your knowledge base using the <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-neutral-800 rounded text-fuchsia-600 dark:text-[#ff00ff] text-xs">kb_link</code> tool to visualize connections here.
         </p>
       </div>
     );
   }
 
   return (
-    <div className={cn("flex flex-col h-full bg-gray-50 dark:bg-neutral-900 overflow-hidden", className)}>
+    <div className={cn("flex flex-col h-full bg-gray-50 dark:bg-neutral-950 overflow-hidden", className)}>
       {/* Canvas container */}
       <div
         ref={containerRef}
@@ -1090,7 +1223,7 @@ export function KnowledgeGraphViewer({ className }: { className?: string }) {
             {cacheStatus === "computing" && (
               <>
                 <span className="text-gray-300 dark:text-neutral-600">•</span>
-                <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                <span className="flex items-center gap-1 text-xs text-fuchsia-600 dark:text-[#ff00ff]">
                   <Loader2 className="w-3 h-3 animate-spin" />
                   computing
                 </span>

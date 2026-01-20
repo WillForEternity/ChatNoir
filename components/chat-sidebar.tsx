@@ -567,17 +567,17 @@ function SettingsPanel({
                   className={cn(
                     "flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all",
                     settings.theme === "light"
-                      ? "border-blue-500 bg-blue-50 dark:bg-neutral-800/50"
+                      ? "border-fuchsia-500 dark:border-[#ff00ff] bg-fuchsia-50 dark:bg-neutral-800/50"
                       : "border-gray-200 dark:border-neutral-700 hover:border-gray-300 dark:hover:border-neutral-600"
                   )}
                 >
                   <Sun className={cn(
                     "w-5 h-5",
-                    settings.theme === "light" ? "text-blue-600" : "text-gray-500 dark:text-neutral-500"
+                    settings.theme === "light" ? "text-fuchsia-600 dark:text-[#ff00ff]" : "text-gray-500 dark:text-neutral-500"
                   )} />
                   <span className={cn(
                     "text-xs font-medium",
-                    settings.theme === "light" ? "text-blue-600" : "text-gray-600 dark:text-neutral-500"
+                    settings.theme === "light" ? "text-fuchsia-600 dark:text-[#ff00ff]" : "text-gray-600 dark:text-neutral-500"
                   )}>Light</span>
                 </button>
                 <button
@@ -585,17 +585,17 @@ function SettingsPanel({
                   className={cn(
                     "flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all",
                     settings.theme === "dark"
-                      ? "border-blue-500 bg-blue-50 dark:bg-neutral-800/50"
+                      ? "border-fuchsia-500 dark:border-[#ff00ff] bg-fuchsia-50 dark:bg-neutral-800/50"
                       : "border-gray-200 dark:border-neutral-700 hover:border-gray-300 dark:hover:border-neutral-600"
                   )}
                 >
                   <Moon className={cn(
                     "w-5 h-5",
-                    settings.theme === "dark" ? "text-blue-600" : "text-gray-500 dark:text-neutral-500"
+                    settings.theme === "dark" ? "text-fuchsia-600 dark:text-[#ff00ff]" : "text-gray-500 dark:text-neutral-500"
                   )} />
                   <span className={cn(
                     "text-xs font-medium",
-                    settings.theme === "dark" ? "text-blue-600" : "text-gray-600 dark:text-neutral-500"
+                    settings.theme === "dark" ? "text-fuchsia-600 dark:text-[#ff00ff]" : "text-gray-600 dark:text-neutral-500"
                   )}>Dark</span>
                 </button>
                 <button
@@ -603,17 +603,17 @@ function SettingsPanel({
                   className={cn(
                     "flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all",
                     settings.theme === "system"
-                      ? "border-blue-500 bg-blue-50 dark:bg-neutral-800/50"
+                      ? "border-fuchsia-500 dark:border-[#ff00ff] bg-fuchsia-50 dark:bg-neutral-800/50"
                       : "border-gray-200 dark:border-neutral-700 hover:border-gray-300 dark:hover:border-neutral-600"
                   )}
                 >
                   <Monitor className={cn(
                     "w-5 h-5",
-                    settings.theme === "system" ? "text-blue-600" : "text-gray-500 dark:text-neutral-500"
+                    settings.theme === "system" ? "text-fuchsia-600 dark:text-[#ff00ff]" : "text-gray-500 dark:text-neutral-500"
                   )} />
                   <span className={cn(
                     "text-xs font-medium",
-                    settings.theme === "system" ? "text-blue-600" : "text-gray-600 dark:text-neutral-500"
+                    settings.theme === "system" ? "text-fuchsia-600 dark:text-[#ff00ff]" : "text-gray-600 dark:text-neutral-500"
                   )}>System</span>
                 </button>
               </div>
@@ -659,7 +659,7 @@ function SettingsPanel({
                   onClick={() => updateSetting("sendWithEnter", !settings.sendWithEnter)}
                   className={cn(
                     "w-10 h-6 rounded-full transition-colors relative cursor-pointer",
-                    settings.sendWithEnter ? "bg-blue-500" : "bg-gray-300 dark:bg-neutral-600"
+                    settings.sendWithEnter ? "bg-fuchsia-500 dark:bg-[#ff00ff]" : "bg-gray-300 dark:bg-neutral-600"
                   )}
                 >
                   <div
@@ -681,7 +681,7 @@ function SettingsPanel({
                   onClick={() => updateSetting("showTimestamps", !settings.showTimestamps)}
                   className={cn(
                     "w-10 h-6 rounded-full transition-colors relative cursor-pointer",
-                    settings.showTimestamps ? "bg-blue-500" : "bg-gray-300 dark:bg-neutral-600"
+                    settings.showTimestamps ? "bg-fuchsia-500 dark:bg-[#ff00ff]" : "bg-gray-300 dark:bg-neutral-600"
                   )}
                 >
                   <div
@@ -1140,7 +1140,7 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(function
         className={cn(
           "absolute top-0 right-0 w-1 h-full cursor-ew-resize z-10 transition-colors",
           isResizing 
-            ? "bg-blue-500" 
+            ? "bg-fuchsia-500 dark:bg-[#ff00ff]" 
             : "bg-transparent hover:bg-gray-300 dark:hover:bg-neutral-600"
         )}
       />
@@ -1245,7 +1245,7 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(function
                   <div className={cn(
                     "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200",
                     activeTab === "chats"
-                      ? "bg-blue-500 text-white shadow-lg shadow-blue-500/30"
+                      ? "bg-fuchsia-500 dark:bg-[#ff00ff] text-white shadow-lg shadow-fuchsia-500/30 dark:shadow-[#ff00ff]/30"
                       : "bg-gray-100 dark:bg-neutral-800 text-gray-500 dark:text-neutral-400"
                   )}>
                     <MessageCircle className="w-4 h-4" />
@@ -1264,7 +1264,7 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(function
                     </p>
                   </div>
                   {activeTab === "chats" && (
-                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                    <div className="w-2 h-2 rounded-full bg-fuchsia-500 dark:bg-[#ff00ff] animate-pulse" />
                   )}
                 </button>
 
@@ -1284,7 +1284,7 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(function
                   <div className={cn(
                     "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200",
                     activeTab === "knowledge"
-                      ? "bg-purple-500 text-white shadow-lg shadow-purple-500/30"
+                      ? "bg-fuchsia-500 dark:bg-[#ff00ff] text-white shadow-lg shadow-fuchsia-500/30 dark:shadow-[#ff00ff]/30"
                       : "bg-gray-100 dark:bg-neutral-800 text-gray-500 dark:text-neutral-400"
                   )}>
                     <Brain className="w-4 h-4" />
@@ -1303,7 +1303,7 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(function
                     </p>
                   </div>
                   {activeTab === "knowledge" && (
-                    <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+                    <div className="w-2 h-2 rounded-full bg-fuchsia-500 dark:bg-[#ff00ff] animate-pulse" />
                   )}
                 </button>
 
@@ -1323,7 +1323,7 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(function
                   <div className={cn(
                     "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200",
                     activeTab === "large-documents"
-                      ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/30"
+                      ? "bg-fuchsia-500 dark:bg-[#ff00ff] text-white shadow-lg shadow-fuchsia-500/30 dark:shadow-[#ff00ff]/30"
                       : "bg-gray-100 dark:bg-neutral-800 text-gray-500 dark:text-neutral-400"
                   )}>
                     <FileStack className="w-4 h-4" />
@@ -1342,7 +1342,7 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(function
                     </p>
                   </div>
                   {activeTab === "large-documents" && (
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <div className="w-2 h-2 rounded-full bg-fuchsia-500 dark:bg-[#ff00ff] animate-pulse" />
                   )}
                 </button>
 
@@ -1362,7 +1362,7 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(function
                   <div className={cn(
                     "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200",
                     activeTab === "embeddings"
-                      ? "bg-amber-500 text-white shadow-lg shadow-amber-500/30"
+                      ? "bg-fuchsia-500 dark:bg-[#ff00ff] text-white shadow-lg shadow-fuchsia-500/30 dark:shadow-[#ff00ff]/30"
                       : "bg-gray-100 dark:bg-neutral-800 text-gray-500 dark:text-neutral-400"
                   )}>
                     <Sparkles className="w-4 h-4" />
@@ -1381,7 +1381,7 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(function
                     </p>
                   </div>
                   {activeTab === "embeddings" && (
-                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                    <div className="w-2 h-2 rounded-full bg-fuchsia-500 dark:bg-[#ff00ff] animate-pulse" />
                   )}
                 </button>
               </div>
@@ -1459,17 +1459,6 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(function
           <div className="px-3 py-2 border-b border-gray-200 dark:border-neutral-700 bg-gray-50/50 dark:bg-neutral-900/50 flex-shrink-0">
             <div className="flex items-center gap-1 bg-gray-100 dark:bg-neutral-800 rounded-lg p-0.5">
               <button
-                onClick={() => setEmbeddingsSubTab("kb")}
-                className={cn(
-                  "flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all",
-                  embeddingsSubTab === "kb"
-                    ? "bg-white dark:bg-neutral-700 text-gray-900 dark:text-neutral-100 shadow-sm"
-                    : "text-gray-500 dark:text-neutral-400 hover:text-gray-700 dark:hover:text-neutral-300"
-                )}
-              >
-                KB
-              </button>
-              <button
                 onClick={() => setEmbeddingsSubTab("chats")}
                 className={cn(
                   "flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all",
@@ -1479,6 +1468,17 @@ export const ChatSidebar = forwardRef<ChatSidebarRef, ChatSidebarProps>(function
                 )}
               >
                 Chats
+              </button>
+              <button
+                onClick={() => setEmbeddingsSubTab("kb")}
+                className={cn(
+                  "flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all",
+                  embeddingsSubTab === "kb"
+                    ? "bg-white dark:bg-neutral-700 text-gray-900 dark:text-neutral-100 shadow-sm"
+                    : "text-gray-500 dark:text-neutral-400 hover:text-gray-700 dark:hover:text-neutral-300"
+                )}
+              >
+                KB
               </button>
               <button
                 onClick={() => setEmbeddingsSubTab("docs")}

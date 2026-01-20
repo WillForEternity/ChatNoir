@@ -37,6 +37,9 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /* Highlight color - magenta/fuchsia from ChatNoire branding */
+  --highlight: #d946ef;
+  --highlight-foreground: #ffffff;
 }
 
 .dark {
@@ -72,6 +75,9 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.269 0 0);
   --sidebar-ring: oklch(0.439 0 0);
+  /* Highlight color - exact magenta from ChatNoire blob animation (#ff00ff) */
+  --highlight: #ff00ff;
+  --highlight-foreground: #ffffff;
 }
 
 @theme inline {
@@ -113,6 +119,8 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-highlight: var(--highlight);
+  --color-highlight-foreground: var(--highlight-foreground);
 }
 
 @layer base {

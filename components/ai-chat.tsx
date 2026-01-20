@@ -5005,7 +5005,7 @@ ${n.links.incoming.length > 0 ? `<incoming>${n.links.incoming.map((l) => `<link 
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-neutral-800 h-[48px] flex-shrink-0">
         {/* Left side: Model selector + Token count */}
         <div className="flex items-center gap-3">
-          {/* Model selector - pure neumorphic inset toggle */}
+          {/* Model selector - neumorphic button (outset by default, level on hover, inset on click) */}
           <button
             onClick={() => {
               const newTier = modelTier === "sonnet" ? "opus" : "sonnet";
@@ -5013,28 +5013,22 @@ ${n.links.incoming.length > 0 ? `<incoming>${n.links.incoming.map((l) => `<link 
               setModelTier(newTier);
             }}
             className={cn(
-              "relative px-4 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all duration-300 select-none",
-              // Pure neumorphic styling - no gray, uses page background
-              "bg-white dark:bg-neutral-950",
-              // Neumorphic inset effect
-              "shadow-[inset_2px_2px_5px_rgba(0,0,0,0.08),inset_-2px_-2px_5px_rgba(255,255,255,0.8)]",
-              "dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.4),inset_-2px_-2px_5px_rgba(255,255,255,0.03)]",
-              // Text color - dark grey for Sonnet, black for Opus
-              modelTier === "sonnet"
-                ? "text-gray-500 dark:text-neutral-400"
-                : "text-black dark:text-white",
-              // Hover - deeper inset
-              "hover:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.1),inset_-3px_-3px_6px_rgba(255,255,255,0.9)]",
-              "dark:hover:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.5),inset_-3px_-3px_6px_rgba(255,255,255,0.04)]",
-              // Active - even deeper inset
-              "active:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.12),inset_-4px_-4px_8px_rgba(255,255,255,0.7)]",
-              "dark:active:shadow-[inset_4px_4px_8px_rgba(0,0,0,0.6),inset_-4px_-4px_8px_rgba(255,255,255,0.02)]"
+              "neu-tile neu-button",
+              "px-4 py-1.5 text-xs font-semibold uppercase tracking-wider select-none"
             )}
             title={`Click to switch to ${modelTier === "sonnet" ? "Opus" : "Sonnet"}`}
           >
-            <span className="relative z-10">
-              {modelTier === "sonnet" ? "Sonnet" : "Opus"}
-            </span>
+            <div className="neu-inner">
+              <span className={cn(
+                "neu-content",
+                // Text color - dark grey for Sonnet, black for Opus
+                modelTier === "sonnet"
+                  ? "text-gray-500 dark:text-neutral-400"
+                  : "text-black dark:text-white"
+              )}>
+                {modelTier === "sonnet" ? "Sonnet" : "Opus"}
+              </span>
+            </div>
           </button>
           
           {/* Token count display */}

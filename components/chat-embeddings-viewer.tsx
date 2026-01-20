@@ -47,9 +47,25 @@ interface ViewState {
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 5;
 
-// Black dots for all chat embeddings
-const DOT_COLOR_LIGHT = "#1a1a1a";
-const DOT_COLOR_DARK = "#e5e5e5";
+// Color gradient for time-based visualization (oldest to newest)
+// Full spectrum: light blue -> cyan -> green -> yellow -> orange -> red
+const TIME_GRADIENT_LIGHT = [
+  { r: 14, g: 165, b: 233 },   // sky-500 (oldest)
+  { r: 6, g: 182, b: 212 },    // cyan-500
+  { r: 34, g: 197, b: 94 },    // green-500
+  { r: 234, g: 179, b: 8 },    // yellow-500
+  { r: 249, g: 115, b: 22 },   // orange-500
+  { r: 239, g: 68, b: 68 },    // red-500 (newest)
+];
+
+const TIME_GRADIENT_DARK = [
+  { r: 56, g: 189, b: 248 },   // sky-400 (oldest)
+  { r: 34, g: 211, b: 238 },   // cyan-400
+  { r: 74, g: 222, b: 128 },   // green-400
+  { r: 250, g: 204, b: 21 },   // yellow-400
+  { r: 251, g: 146, b: 60 },   // orange-400
+  { r: 248, g: 113, b: 113 },  // red-400 (newest)
+];
 
 // =============================================================================
 // HELPERS
@@ -68,6 +84,34 @@ function getPointStyle(totalPoints: number): { radius: number; hoverRadius: numb
   } else {
     return { radius: 2, hoverRadius: 5, opacity: 0.5 };
   }
+}
+
+/**
+ * Interpolate between gradient colors based on a normalized value (0-1).
+ * 0 = oldest (first color), 1 = newest (last color)
+ */
+function interpolateGradient(
+  gradient: { r: number; g: number; b: number }[],
+  t: number
+): string {
+  // Clamp t to [0, 1]
+  const clampedT = Math.max(0, Math.min(1, t));
+  
+  // Calculate position in gradient (0 to gradient.length - 1)
+  const position = clampedT * (gradient.length - 1);
+  const lowerIndex = Math.floor(position);
+  const upperIndex = Math.min(lowerIndex + 1, gradient.length - 1);
+  const localT = position - lowerIndex;
+  
+  // Interpolate between the two colors
+  const lower = gradient[lowerIndex];
+  const upper = gradient[upperIndex];
+  
+  const r = Math.round(lower.r + (upper.r - lower.r) * localT);
+  const g = Math.round(lower.g + (upper.g - lower.g) * localT);
+  const b = Math.round(lower.b + (upper.b - lower.b) * localT);
+  
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 // =============================================================================
@@ -106,6 +150,15 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
 
   // Adaptive point style based on total count
   const pointStyle = useMemo(() => getPointStyle(points.length), [points.length]);
+
+  // Compute time range for gradient coloring
+  const timeRange = useMemo(() => {
+    if (points.length === 0) return { min: 0, max: 0, range: 0 };
+    const timestamps = points.map((p) => p.embedding.updatedAt);
+    const min = Math.min(...timestamps);
+    const max = Math.max(...timestamps);
+    return { min, max, range: max - min || 1 }; // Avoid division by zero
+  }, [points]);
 
   // Detect dark mode
   useEffect(() => {
@@ -273,15 +326,19 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
       ctx.stroke();
     }
 
-    // Get dot color based on theme
-    const dotColor = isDarkMode ? DOT_COLOR_DARK : DOT_COLOR_LIGHT;
+    // Get gradient based on theme
+    const gradient = isDarkMode ? TIME_GRADIENT_DARK : TIME_GRADIENT_LIGHT;
 
-    // Draw points
+    // Draw points with time-based gradient colors
     for (const point of points) {
       const x = toCanvasX(point.x);
       const y = toCanvasY(point.y);
       const isHovered = hoveredPoint === point;
       const isSelected = selectedPoint === point;
+
+      // Calculate normalized time value (0 = oldest, 1 = newest)
+      const normalizedTime = (point.embedding.updatedAt - timeRange.min) / timeRange.range;
+      const dotColor = interpolateGradient(gradient, normalizedTime);
 
       // Determine radius
       const radius = isHovered || isSelected ? pointStyle.hoverRadius : pointStyle.radius;
@@ -309,7 +366,7 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
       ctx.shadowColor = "transparent";
       ctx.shadowBlur = 0;
     }
-  }, [points, viewState, hoveredPoint, selectedPoint, pointStyle, isDarkMode]);
+  }, [points, viewState, hoveredPoint, selectedPoint, pointStyle, isDarkMode, timeRange]);
 
   // Mouse handlers
   const getPointAtPosition = useCallback(
@@ -417,7 +474,7 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
   if (isLoading) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full", className)}>
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-3" />
+        <Loader2 className="w-8 h-8 animate-spin text-fuchsia-500 dark:text-[#ff00ff] mb-3" />
         <p className="text-sm text-gray-500 dark:text-neutral-400">Loading chat embeddings...</p>
       </div>
     );
@@ -426,8 +483,8 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
   if (embeddings.length === 0) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full px-6", className)}>
-        <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center mb-4">
-          <MessageSquare className="w-8 h-8 text-blue-500" />
+        <div className="w-16 h-16 rounded-2xl bg-fuchsia-50 dark:bg-fuchsia-900/30 flex items-center justify-center mb-4">
+          <MessageSquare className="w-8 h-8 text-fuchsia-500 dark:text-[#ff00ff]" />
         </div>
         <h3 className="text-sm font-medium text-gray-700 dark:text-neutral-300 mb-2">
           No Chat Embeddings Yet
@@ -441,8 +498,8 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
           className={cn(
             "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
             isReindexing
-              ? "bg-blue-200 dark:bg-blue-800 text-blue-700 dark:text-blue-300 cursor-wait"
-              : "bg-blue-500 text-white hover:bg-blue-600"
+              ? "bg-fuchsia-200 dark:bg-fuchsia-800 text-fuchsia-700 dark:text-fuchsia-300 cursor-wait"
+              : "bg-fuchsia-500 dark:bg-[#ff00ff] text-white hover:bg-fuchsia-600"
           )}
         >
           <RefreshCw className={cn("w-4 h-4", isReindexing && "animate-spin")} />
@@ -456,7 +513,7 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
             </div>
             <div className="h-1.5 bg-gray-200 dark:bg-neutral-700 rounded-full overflow-hidden">
               <div
-                className="h-full bg-blue-500 transition-all duration-300 ease-out"
+                className="h-full bg-fuchsia-500 dark:bg-[#ff00ff] transition-all duration-300 ease-out"
                 style={{
                   width: reindexProgress.total > 0
                     ? `${(reindexProgress.current / reindexProgress.total) * 100}%`
@@ -474,8 +531,8 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
   if (cacheStatus === "missing" && points.length === 0) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full px-6", className)}>
-        <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center mb-4">
-          <RefreshCw className="w-8 h-8 text-amber-500" />
+        <div className="w-16 h-16 rounded-2xl bg-fuchsia-50 dark:bg-fuchsia-900/30 flex items-center justify-center mb-4">
+          <RefreshCw className="w-8 h-8 text-fuchsia-500 dark:text-[#ff00ff]" />
         </div>
         <h3 className="text-sm font-medium text-gray-700 dark:text-neutral-300 mb-2">
           Visualization Not Computed
@@ -489,8 +546,8 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
           className={cn(
             "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
             isReindexing
-              ? "bg-amber-200 dark:bg-amber-800 text-amber-700 dark:text-amber-300 cursor-wait"
-              : "bg-amber-500 text-white hover:bg-amber-600"
+              ? "bg-fuchsia-200 dark:bg-fuchsia-800 text-fuchsia-700 dark:text-fuchsia-300 cursor-wait"
+              : "bg-fuchsia-500 dark:bg-[#ff00ff] text-white hover:bg-fuchsia-600"
           )}
         >
           <RefreshCw className={cn("w-4 h-4", isReindexing && "animate-spin")} />
@@ -504,7 +561,7 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
             </div>
             <div className="h-1.5 bg-gray-200 dark:bg-neutral-700 rounded-full overflow-hidden">
               <div
-                className="h-full bg-amber-500 transition-all duration-300 ease-out"
+                className="h-full bg-fuchsia-500 dark:bg-[#ff00ff] transition-all duration-300 ease-out"
                 style={{
                   width: reindexProgress.total > 0
                     ? `${(reindexProgress.current / reindexProgress.total) * 100}%`
@@ -566,8 +623,8 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
               className={cn(
                 "flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all",
                 isReindexing
-                  ? "bg-blue-100 dark:bg-blue-900/30 text-blue-500 cursor-wait"
-                  : "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+                  ? "bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-500 dark:text-[#ff00ff] cursor-wait"
+                  : "bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-600 dark:text-[#ff00ff] hover:bg-fuchsia-100 dark:hover:bg-fuchsia-900/40"
               )}
               title="Reindex all chats"
             >
@@ -586,7 +643,7 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
             </div>
             <div className="h-1.5 bg-gray-200 dark:bg-neutral-700 rounded-full overflow-hidden">
               <div
-                className="h-full bg-blue-500 transition-all duration-300 ease-out"
+                className="h-full bg-fuchsia-500 dark:bg-[#ff00ff] transition-all duration-300 ease-out"
                 style={{
                   width: reindexProgress.total > 0
                     ? `${(reindexProgress.current / reindexProgress.total) * 100}%`
@@ -631,6 +688,13 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
               <p className="text-xs text-gray-500 dark:text-neutral-400">
                 {hoveredPoint.embedding.messageRole === "user" ? "User message" : "Assistant message"}
               </p>
+              <p className="text-xs text-gray-400 dark:text-neutral-500">
+                {new Date(hoveredPoint.embedding.updatedAt).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </p>
             </div>
           </div>
         )}
@@ -660,6 +724,25 @@ export function ChatEmbeddingsViewer({ className }: { className?: string }) {
           </p>
         </div>
       )}
+
+      {/* Time gradient legend */}
+      <div className="border-t border-gray-200 dark:border-neutral-700 px-3 py-2 bg-gray-50/50 dark:bg-neutral-900/50 flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-500 dark:text-neutral-400">Chat age:</span>
+          <div className="flex-1 flex items-center gap-2">
+            <span className="text-xs text-gray-400 dark:text-neutral-500">Older</span>
+            <div
+              className="flex-1 h-2 rounded-full"
+              style={{
+                background: isDarkMode
+                  ? "linear-gradient(to right, rgb(56, 189, 248), rgb(34, 211, 238), rgb(74, 222, 128), rgb(250, 204, 21), rgb(251, 146, 60), rgb(248, 113, 113))"
+                  : "linear-gradient(to right, rgb(14, 165, 233), rgb(6, 182, 212), rgb(34, 197, 94), rgb(234, 179, 8), rgb(249, 115, 22), rgb(239, 68, 68))",
+              }}
+            />
+            <span className="text-xs text-gray-400 dark:text-neutral-500">Newer</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

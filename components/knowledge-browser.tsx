@@ -267,7 +267,7 @@ export const KnowledgeBrowser = forwardRef<KnowledgeBrowserRef, KnowledgeBrowser
                   ) : (
                     <ChevronRight className="w-3.5 h-3.5 flex-shrink-0 text-gray-400" />
                   )}
-                  <Folder className="w-4 h-4 flex-shrink-0 text-amber-500" />
+                  <Folder className="w-4 h-4 flex-shrink-0 text-fuchsia-500 dark:text-[#ff00ff]" />
                 </>
               ) : (
                 <>
@@ -336,8 +336,8 @@ export const KnowledgeBrowser = forwardRef<KnowledgeBrowserRef, KnowledgeBrowser
               className={cn(
                 "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all",
                 isReindexing
-                  ? "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 cursor-wait"
-                  : "bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/40"
+                  ? "bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-600 dark:text-[#ff00ff] cursor-wait"
+                  : "bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-600 dark:text-[#ff00ff] hover:bg-fuchsia-100 dark:hover:bg-fuchsia-900/40"
               )}
               title="Reindex all files for semantic search"
             >
@@ -355,7 +355,7 @@ export const KnowledgeBrowser = forwardRef<KnowledgeBrowserRef, KnowledgeBrowser
               </div>
               <div className="h-1.5 bg-gray-200 dark:bg-neutral-700 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-purple-500 transition-all duration-300 ease-out"
+                  className="h-full bg-fuchsia-500 dark:bg-[#ff00ff] transition-all duration-300 ease-out"
                   style={{
                     width: reindexProgress.total > 0
                       ? `${(reindexProgress.current / reindexProgress.total) * 100}%`

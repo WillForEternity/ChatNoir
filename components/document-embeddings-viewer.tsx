@@ -410,7 +410,7 @@ export function DocumentEmbeddingsViewer({ className }: { className?: string }) 
     const baseScale = Math.min(width, height) * 0.4;
 
     // Clear
-    ctx.fillStyle = isDarkMode ? "#171717" : "#f9fafb";
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--background") || "#f9fafb";
     ctx.fillRect(0, 0, width, height);
 
     // Transform coordinates

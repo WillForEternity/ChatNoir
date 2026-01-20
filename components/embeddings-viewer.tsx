@@ -407,7 +407,7 @@ export function EmbeddingsViewer({ className }: { className?: string }) {
   if (isLoading) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full", className)}>
-        <Loader2 className="w-8 h-8 animate-spin text-amber-500 mb-3" />
+        <Loader2 className="w-8 h-8 animate-spin text-fuchsia-500 dark:text-[#ff00ff] mb-3" />
         <p className="text-sm text-gray-500 dark:text-neutral-400">Loading embeddings...</p>
       </div>
     );
@@ -416,8 +416,8 @@ export function EmbeddingsViewer({ className }: { className?: string }) {
   if (embeddings.length === 0) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full px-6", className)}>
-        <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center mb-4">
-          <Info className="w-8 h-8 text-amber-500" />
+        <div className="w-16 h-16 rounded-2xl bg-fuchsia-50 dark:bg-fuchsia-900/30 flex items-center justify-center mb-4">
+          <Info className="w-8 h-8 text-fuchsia-500 dark:text-[#ff00ff]" />
         </div>
         <h3 className="text-sm font-medium text-gray-700 dark:text-neutral-300 mb-2">
           No Embeddings Yet
@@ -433,8 +433,8 @@ export function EmbeddingsViewer({ className }: { className?: string }) {
   if (cacheStatus === "missing" && points.length === 0) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full px-6", className)}>
-        <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center mb-4">
-          <RefreshCw className="w-8 h-8 text-amber-500" />
+        <div className="w-16 h-16 rounded-2xl bg-fuchsia-50 dark:bg-fuchsia-900/30 flex items-center justify-center mb-4">
+          <RefreshCw className="w-8 h-8 text-fuchsia-500 dark:text-[#ff00ff]" />
         </div>
         <h3 className="text-sm font-medium text-gray-700 dark:text-neutral-300 mb-2">
           Visualization Not Computed
@@ -549,7 +549,7 @@ export function EmbeddingsViewer({ className }: { className?: string }) {
             </button>
           </div>
           {selectedPoint.embedding.headingPath && (
-            <p className="text-xs text-amber-500 mb-2 truncate">
+            <p className="text-xs text-fuchsia-500 dark:text-[#ff00ff] mb-2 truncate">
               {selectedPoint.embedding.headingPath}
             </p>
           )}
@@ -591,7 +591,7 @@ export function EmbeddingsViewer({ className }: { className?: string }) {
           {filterCategory && (
             <button
               onClick={() => setFilterCategory(null)}
-              className="text-xs text-amber-500 hover:text-amber-600 dark:hover:text-amber-400 px-2 py-1"
+              className="text-xs text-fuchsia-500 hover:text-fuchsia-600 dark:text-[#ff00ff] dark:hover:text-fuchsia-400 px-2 py-1"
             >
               Clear filter
             </button>
