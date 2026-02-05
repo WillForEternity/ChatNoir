@@ -28,10 +28,12 @@ ChatNoire provides a polished chat experience with a persistent knowledge filesy
 ### Large Document RAG
 - **Upload Large Documents** — Upload PDFs, text files, and markdown for Q&A without loading into context
 - **PDF Support** — Hybrid PDF extraction using PDF.js (free) with Claude Haiku fallback for scanned documents
+- **Intelligent Quality Detection** — Automatically detects low-quality PDF.js extraction and falls back to AI OCR
 - **Automatic Chunking** — Heading-aware chunking with 15% overlap to preserve context at boundaries
 - **Hybrid Search** — Combines lexical (exact terms) + semantic (meaning) with RRF fusion
 - **Cross-Encoder Reranking** — Optional reranking stage improves retrieval accuracy by 20-40%
 - **Document Browser** — Visual browser to manage uploaded documents
+- **Background Indexing** — Documents are indexed in the background; you can continue using the app while indexing completes
 
 ### Document Viewer
 - **Full-Screen Viewer** — Cursor-style 3-panel layout with header bar showing document title and status
@@ -41,6 +43,7 @@ ChatNoire provides a polished chat experience with a persistent knowledge filesy
 - **Document Sidebar** — Switch between documents without leaving the viewer
 - **Collapsible Panels** — Resize or collapse sidebars with intuitive icons and expand indicators
 - **Chat Badge** — Collapsed chat panel shows badge with active chat count
+- **Optional Viewing** — Document viewer opens only when you click the View button, not automatically on upload
 
 ### AI Capabilities
 - **Web Search** — Anthropic's first-party web search tool for real-time information
@@ -195,7 +198,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 │   └── large-documents/          # Large document RAG system
 │       ├── index.ts              # Large docs public API
 │       ├── idb.ts                # IndexedDB schema for documents + file storage
-│       ├── operations.ts         # Upload, index, hybrid search, PDF extraction
+│       ├── operations.ts         # Upload, index, hybrid search, PDF extraction with quality detection
 │       ├── lexical-search.ts     # BM25-style term matching for documents
 │       └── types.ts              # Large document types
 │
@@ -212,7 +215,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 │   ├── chat-sidebar.tsx          # Sidebar with conversation history & KB browser
 │   ├── knowledge-browser.tsx     # Knowledge filesystem browser UI
 │   ├── knowledge-graph-viewer.tsx # Interactive knowledge graph visualization
-│   ├── large-document-browser.tsx # Large document upload/manage UI
+│   ├── large-document-browser.tsx # Large document upload/manage UI (background indexing)
 │   ├── chat/                     # Shared chat components (reused by main chat & document viewer)
 │   │   ├── index.ts              # Public exports
 │   │   ├── markdown-content.tsx  # Markdown/LaTeX/code rendering with syntax highlighting
@@ -264,7 +267,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 │   │   ├── embed/route.ts          # Embedding API endpoint
 │   │   ├── context-saver/route.ts  # Context saver agent endpoint
 │   │   ├── generate-title/route.ts # Auto title generation endpoint
-│   │   └── parse-pdf/route.ts      # Claude Haiku PDF extraction fallback
+│   │   └── parse-pdf/route.ts      # Claude Haiku PDF extraction fallback (uses free trial)
 │   ├── page.tsx                  # Main page
 │   ├── layout.tsx                # Root layout
 │   └── globals.css               # Global styles
@@ -428,14 +431,16 @@ For documents too large to fit in Claude's context window, ChatNoire provides a 
 
 ### How It Works
 
-1. **Upload** — Drop a file in the Large Documents browser
-2. **PDF Extraction** — PDFs are parsed using PDF.js (free), with Claude Haiku fallback for scanned documents
-3. **Chunking** — Document is split into ~512-token chunks with 15% overlap
-4. **Embedding** — Each chunk is embedded using OpenAI's embedding model
-5. **Storage** — Chunks, embeddings, and original files stored in IndexedDB (client-side)
-6. **Search** — Claude uses `document_search` to find relevant chunks by meaning
-7. **Rerank** — Top candidates are reranked for higher accuracy
-8. **Answer** — Claude synthesizes an answer from the retrieved chunks
+1. **Upload** — Click "Upload Document" or drag-and-drop a file in the Large Documents browser
+2. **Storage** — File is immediately stored in IndexedDB for viewing
+3. **Background Indexing** — Document is indexed in the background while you continue using the app
+4. **PDF Extraction** — PDFs are parsed using PDF.js (free), with intelligent quality detection that falls back to Claude Haiku for scanned/image-based documents
+5. **Chunking** — Document is split into ~512-token chunks with 15% overlap
+6. **Embedding** — Each chunk is embedded using OpenAI's embedding model
+7. **Storage** — Chunks with embeddings stored in IndexedDB (client-side)
+8. **Search** — Claude uses `document_search` to find relevant chunks by meaning
+9. **Rerank** — Top candidates are reranked for higher accuracy
+10. **Answer** — Claude synthesizes an answer from the retrieved chunks
 
 ### Document Tools
 
@@ -446,14 +451,19 @@ For documents too large to fit in Claude's context window, ChatNoire provides a 
 
 ### PDF Extraction
 
-ChatNoire uses a **hybrid PDF extraction** strategy:
+ChatNoire uses an **intelligent hybrid PDF extraction** strategy:
 
 | Method | Cost | Speed | Best For |
 |--------|------|-------|----------|
 | **PDF.js** | Free | Fast | Text-based PDFs with selectable text |
 | **Claude Haiku** | ~$0.01/page | Slower | Scanned documents, image-heavy PDFs |
 
-The system automatically falls back to Claude Haiku when PDF.js extraction yields insufficient text (< 100 characters).
+The system automatically detects when PDF.js extraction yields low-quality content by checking:
+- **Character density** — At least 500 chars/page expected for real documents
+- **Word density** — Real text has 5+ words per 100 characters
+- **Text structure** — Proper spacing ratios indicate readable content
+
+When quality checks fail, the system automatically falls back to Claude Haiku for AI-powered OCR.
 
 ### Chunking Strategy (2025 Best Practices)
 
@@ -468,11 +478,29 @@ The system automatically falls back to Claude Haiku when PDF.js extraction yield
 - **Text** — `.txt`, `.md`, `.json`, `.xml`, `.csv`, `.html` (up to 10MB)
 - **PDF** — Automatic text extraction with AI fallback (up to 50MB)
 
+### Background Indexing
+
+When you upload a document:
+1. The file is immediately stored and appears in your document list
+2. Indexing (text extraction, chunking, embedding) runs in the background
+3. You can view the document immediately while indexing continues
+4. The document shows "Indexing..." status until complete
+5. Once indexed, the document shows a checkmark and is searchable via RAG
+
+Indexing always completes, even if you navigate away or close the browser tab (as long as the tab remains open in the background).
+
 ---
 
 ## Document Viewer
 
 ChatNoire includes a **Document Viewer** with a Cursor-style 3-panel layout for reading and discussing documents.
+
+### Opening Documents
+
+Documents are **not** opened automatically when uploaded. To view a document:
+1. Go to the **Large Documents** section in the sidebar
+2. Click the **eye icon** (View button) on any document
+3. The document viewer opens as a full-screen overlay
 
 ### Layout
 
@@ -672,12 +700,22 @@ The system prompt follows research-backed context engineering principles:
 3. Check for extra spaces or quotes around the key
 4. Confirm the key hasn't been revoked in the Anthropic console
 
+### PDF Upload Requires API Key
+
+If you see an API key error when uploading PDFs, it means the PDF requires AI-powered OCR (scanned or image-based PDF). The system uses Claude Haiku via the free trial for this. Ensure your server has `ANTHROPIC_API_KEY` configured, or the system will use the free trial automatically.
+
+### Document Has Very Few Chunks
+
+If a PDF document has surprisingly few chunks (e.g., 9 chunks for a 20-page paper), this usually means PDF.js extracted low-quality text. Try:
+1. Delete the document
+2. Re-upload it — the improved quality detection should now trigger AI OCR fallback
+
 ---
 
 ## Tech Stack
 
 - **Framework**: Next.js 16 with App Router
-- **AI SDK**: Vercel AI SDK v6 (`ai`, `@ai-sdk/react`, `@ai-sdk/anthropic`)
+- **AI SDK**: Vercel AI SDK v6 (`ai` v6.0.34, `@ai-sdk/react`, `@ai-sdk/anthropic`)
 - **Model**: Claude Sonnet 4.5 (Anthropic)
 - **Embeddings**: OpenAI `text-embedding-3-small` (or `text-embedding-3-large` with dimension reduction)
 - **Reranking**: Cohere Rerank API or GPT-4o-mini fallback
@@ -689,7 +727,7 @@ The system prompt follows research-backed context engineering principles:
 - **Markdown**: react-markdown with remark-gfm
 - **Math Rendering**: KaTeX with rehype-katex and remark-math
 - **Syntax Highlighting**: react-syntax-highlighter with Prism
-- **PDF Parsing**: pdfjs-dist (client-side extraction) + Claude Haiku (AI fallback)
+- **PDF Parsing**: pdfjs-dist (client-side extraction) + Claude Haiku (AI fallback with quality detection)
 - **PDF Viewing**: react-pdf for native PDF rendering
 - **Resizable Panels**: react-resizable-panels for document viewer layout
 - **Storage**: IndexedDB (via `idb`) for knowledge base, chat history, large documents, and file data

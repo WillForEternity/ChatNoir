@@ -76,10 +76,6 @@ export function LargeDocumentBrowser({ className }: LargeDocumentBrowserProps) {
   const [editingName, setEditingName] = useState("");
   const [viewerDocument, setViewerDocument] = useState<LargeDocumentMetadata | null>(null);
   
-  // Direct file viewing - for immediate render before indexing
-  const [directViewFile, setDirectViewFile] = useState<File | null>(null);
-  const [directViewFileData, setDirectViewFileData] = useState<ArrayBuffer | null>(null);
-  
   // Drag and drop state
   const [isDragging, setIsDragging] = useState(false);
   
@@ -137,8 +133,8 @@ export function LargeDocumentBrowser({ className }: LargeDocumentBrowserProps) {
     return null;
   }, []);
 
-  // Handle file upload with immediate viewing
-  const handleUpload = useCallback(async (files: FileList | null, openImmediately = false) => {
+  // Handle file upload - always index in background, never auto-open viewer
+  const handleUpload = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
     const file = files[0];
@@ -151,51 +147,40 @@ export function LargeDocumentBrowser({ className }: LargeDocumentBrowserProps) {
 
     try {
       setError(null);
+      setUploadProgress({ current: 0, total: 5, status: "parsing", message: "Storing document..." });
       
-      // For PDFs, enable immediate viewing
-      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      // Store the file first (fast operation)
+      const { metadata } = await storeLargeDocument(file);
       
-      if (isPdf && openImmediately) {
-        // Get file data for immediate viewing
-        const fileData = await file.arrayBuffer();
-        setDirectViewFile(file);
-        setDirectViewFileData(fileData);
-        
-        // Store the file (fast) and start background indexing
-        const { metadata } = await storeLargeDocument(file);
-        
-        // Refresh document list to show the new document
-        await loadDocuments();
-        
-        // Start background indexing (don't await - let it run in background)
-        indexLargeDocumentInBackground(metadata.id, file, (progress) => {
+      // Refresh document list to show the new document immediately
+      await loadDocuments();
+      
+      // Start background indexing - this runs to completion without blocking UI
+      // The indexing process handles its own error recovery and status updates
+      // Note: The indexing will complete even if the user navigates away -
+      // it writes directly to IndexedDB which persists independently
+      indexLargeDocumentInBackground(metadata.id, file, (progress) => {
+        // Safe state updates - if component unmounted, these just fail silently
+        try {
           setUploadProgress(progress);
           if (progress.status === "complete" || progress.status === "error") {
             setUploadProgress(null);
             // Refresh to show updated status
             loadDocuments();
           }
-        }).catch((err) => {
-          console.error("[Upload] Background indexing failed:", err);
+        } catch {
+          // Component may have unmounted, but indexing continues in background
+        }
+      }).catch((err) => {
+        console.error("[Upload] Background indexing failed:", err);
+        try {
           setUploadProgress(null);
           loadDocuments();
-        });
-      } else {
-        // For non-PDFs or regular upload, use the store + index flow
-        setUploadProgress({ current: 0, total: 5, status: "parsing", message: "Storing document..." });
-        
-        const { metadata } = await storeLargeDocument(file);
-        await loadDocuments();
-        
-        // Index in background
-        await indexLargeDocumentInBackground(metadata.id, file, (progress) => {
-          setUploadProgress(progress);
-        });
-
-        // Refresh document list
-        await loadDocuments();
-        setUploadProgress(null);
-      }
+        } catch {
+          // Component may have unmounted
+        }
+      });
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
       setUploadProgress(null);
@@ -222,18 +207,9 @@ export function LargeDocumentBrowser({ className }: LargeDocumentBrowserProps) {
     
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
-      // Open immediately for PDFs (drag-and-drop = immediate view intent)
-      handleUpload(files, true);
+      handleUpload(files);
     }
   }, [handleUpload]);
-
-  // Close direct view and show stored document
-  const handleCloseDirectView = useCallback(() => {
-    setDirectViewFile(null);
-    setDirectViewFileData(null);
-    // Refresh to ensure we have latest document list
-    loadDocuments();
-  }, [loadDocuments]);
 
   // Handle delete
   const handleDelete = useCallback(async (documentId: string) => {
@@ -327,10 +303,10 @@ export function LargeDocumentBrowser({ className }: LargeDocumentBrowserProps) {
           <div className="text-center">
             <Upload className="w-12 h-12 text-blue-500 mx-auto mb-2" />
             <p className="text-lg font-medium text-blue-700 dark:text-blue-300">
-              Drop to view & index
+              Drop to upload & index
             </p>
             <p className="text-sm text-blue-600 dark:text-blue-400">
-              PDF will open immediately
+              Document will be indexed for RAG search
             </p>
           </div>
         </div>
@@ -377,13 +353,7 @@ export function LargeDocumentBrowser({ className }: LargeDocumentBrowserProps) {
           className="hidden"
           accept=".txt,.md,.json,.csv,.xml,.html,.pdf,text/plain,text/markdown,application/json,application/pdf"
           onChange={(e) => {
-            // Open PDFs immediately for consistent experience
-            const files = e.target.files;
-            const isPdf = files && files[0] && (
-              files[0].type === "application/pdf" || 
-              files[0].name.toLowerCase().endsWith(".pdf")
-            );
-            handleUpload(files, isPdf);
+            handleUpload(e.target.files);
             // Reset input so same file can be selected again
             e.target.value = "";
           }}
@@ -627,20 +597,11 @@ export function LargeDocumentBrowser({ className }: LargeDocumentBrowserProps) {
         </p>
       </div>
 
-      {/* Document Viewer Overlay - for existing documents */}
+      {/* Document Viewer Overlay - opened via View button, not auto-opened on upload */}
       {viewerDocument && (
         <DocumentViewer
           document={viewerDocument}
           onClose={() => setViewerDocument(null)}
-        />
-      )}
-      
-      {/* Document Viewer Overlay - for immediate viewing of dropped files */}
-      {directViewFile && directViewFileData && (
-        <DocumentViewer
-          directFile={directViewFile}
-          directFileData={directViewFileData}
-          onClose={handleCloseDirectView}
         />
       )}
     </div>

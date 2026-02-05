@@ -95,8 +95,50 @@ function cosineSimilarity(a: number[], b: number[]): number {
 // =============================================================================
 
 /**
+ * Check if extracted text appears to be meaningful content vs just artifacts.
+ * Scanned PDFs often have partial text like page numbers, headers, or OCR fragments
+ * that pass basic length checks but aren't useful content.
+ */
+function isTextMeaningful(text: string, numPages: number): boolean {
+  const trimmed = text.trim();
+  
+  // Minimum characters per page - academic papers typically have 2000-4000 chars/page
+  // We use a low threshold of 500 chars/page to account for image-heavy PDFs
+  const minCharsPerPage = 500;
+  const expectedMinChars = numPages * minCharsPerPage;
+  
+  if (trimmed.length < expectedMinChars) {
+    console.log(`[PDF] Text too short: ${trimmed.length} chars for ${numPages} pages (expected min ${expectedMinChars})`);
+    return false;
+  }
+  
+  // Check for word-like patterns - real text should have mostly alphabetic words
+  // Count words (sequences of 3+ letters)
+  const words = trimmed.match(/[a-zA-Z]{3,}/g) || [];
+  const wordDensity = words.length / (trimmed.length / 100); // words per 100 chars
+  
+  // Real text typically has 10-20 words per 100 chars
+  // Garbage/fragments have much lower density
+  if (wordDensity < 5) {
+    console.log(`[PDF] Low word density: ${wordDensity.toFixed(2)} words/100 chars`);
+    return false;
+  }
+  
+  // Check that we have reasonable sentence-like structure
+  // Real text has periods, commas, spaces in expected ratios
+  const spaceRatio = (trimmed.match(/ /g) || []).length / trimmed.length;
+  if (spaceRatio < 0.1 || spaceRatio > 0.3) {
+    console.log(`[PDF] Unusual space ratio: ${(spaceRatio * 100).toFixed(1)}%`);
+    return false;
+  }
+  
+  return true;
+}
+
+/**
  * Extract text from a PDF using PDF.js (client-side, free).
- * Returns null if the extracted text is too short (likely a scanned PDF).
+ * Returns null if the extracted text is too short or appears to be
+ * low-quality (likely a scanned PDF that needs OCR).
  */
 export async function extractPdfText(
   file: File
@@ -106,8 +148,10 @@ export async function extractPdfText(
     
     // Configure worker if not already set
     // Use unpkg CDN with matching version to avoid version mismatch errors
+    // Note: version is accessed via default export or directly - cast to access it
     if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-      pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+      const version = (pdfjs as unknown as { version: string }).version || "4.9.155";
+      pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`;
     }
 
     const arrayBuffer = await file.arrayBuffer();
@@ -125,16 +169,13 @@ export async function extractPdfText(
 
     const fullText = pageTexts.join("\n\n");
     
-    // Check if we got meaningful text
-    // Use 100 chars minimum, or 50 chars per page for multi-page docs
-    const minChars = pdf.numPages > 1 ? Math.min(100, pdf.numPages * 50) : 50;
-    
-    if (fullText.trim().length < minChars) {
-      console.log("[PDF] Text extraction yielded insufficient content, fallback needed");
+    // Check if we got meaningful text (not just headers/footers/page numbers)
+    if (!isTextMeaningful(fullText, pdf.numPages)) {
+      console.log("[PDF] Text extraction yielded low-quality content, fallback to AI OCR needed");
       return null; // Signal that fallback is needed
     }
 
-    console.log(`[PDF] Extracted ${fullText.length} chars from ${pdf.numPages} pages`);
+    console.log(`[PDF] Extracted ${fullText.length} chars from ${pdf.numPages} pages (quality check passed)`);
     return { text: fullText, numPages: pdf.numPages };
   } catch (error) {
     console.error("[PDF] PDF.js extraction failed:", error);
@@ -149,8 +190,8 @@ export async function extractPdfText(
 export async function parsePdfWithClaude(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);
-  
-  // Note: API key handling is done server-side based on auth context
+  // Use free trial for PDF OCR - this is a background indexing operation
+  formData.append("useFreeTrial", "true");
 
   const response = await fetch("/api/parse-pdf", {
     method: "POST",

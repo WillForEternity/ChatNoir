@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev --webpack",
+    "dev": "next dev --turbopack",
+    "dev:webpack": "next dev --webpack",
+    "dev:clean": "rm -rf .next && next dev --turbopack",
     "lint": "eslint .",
     "start": "next start"
   },
