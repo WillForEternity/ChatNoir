@@ -28,32 +28,45 @@ export function ChatPanel({
   onCollapse,
 }: ChatPanelProps) {
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-white dark:bg-neutral-950 neu-context-white">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b">
-        <span className="font-semibold text-sm">Document Chat</span>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-neutral-700 h-[48px]">
+        <span className="font-semibold text-sm text-gray-900 dark:text-neutral-100">Document Chat</span>
         <button
           onClick={onCollapse}
-          className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
+          className={cn(
+            "p-2 rounded-xl transition-all duration-200",
+            "bg-white dark:bg-neutral-950",
+            "shadow-[3px_3px_6px_rgba(0,0,0,0.08),-3px_-3px_6px_rgba(255,255,255,0.8)]",
+            "dark:shadow-[3px_3px_6px_rgba(0,0,0,0.4),-3px_-3px_6px_rgba(255,255,255,0.03)]",
+            "hover:shadow-[4px_4px_8px_rgba(0,0,0,0.1),-4px_-4px_8px_rgba(255,255,255,0.9)]",
+            "dark:hover:shadow-[4px_4px_8px_rgba(0,0,0,0.5),-4px_-4px_8px_rgba(255,255,255,0.04)]",
+            "active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.1),inset_-3px_-3px_6px_rgba(255,255,255,0.9)]",
+            "dark:active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.5),inset_-3px_-3px_6px_rgba(255,255,255,0.04)]"
+          )}
           title="Collapse chat panel"
         >
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-4 w-4 text-gray-500 dark:text-neutral-500" />
         </button>
       </div>
 
       {/* Tab Bar - Horizontal, side by side */}
       {chats.length > 0 && (
-        <div className="flex border-b overflow-x-auto scrollbar-thin">
+        <div className="flex border-b border-gray-200 dark:border-neutral-700 overflow-x-auto scrollbar-thin bg-gray-50/50 dark:bg-neutral-900/50">
           {chats.map((chat, index) => (
             <button
               key={chat.id}
               onClick={() => onTabChange(chat.id)}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-2 text-sm whitespace-nowrap border-r",
-                "transition-colors min-w-0",
+                "flex items-center gap-1.5 px-3 py-2 text-sm whitespace-nowrap border-r border-gray-200 dark:border-neutral-700",
+                "transition-all duration-200 min-w-0",
                 activeChat === chat.id
-                  ? "bg-background border-b-2 border-b-primary -mb-px font-medium"
-                  : "bg-muted/30 hover:bg-muted/50 text-muted-foreground"
+                  ? cn(
+                      "bg-white dark:bg-neutral-950 -mb-px font-medium",
+                      "text-gray-900 dark:text-neutral-100",
+                      "border-b-2 border-b-fuchsia-500 dark:border-b-[#ff00ff]"
+                    )
+                  : "bg-gray-50/50 dark:bg-neutral-900/50 hover:bg-gray-100 dark:hover:bg-neutral-800 text-gray-500 dark:text-neutral-500"
               )}
             >
               <span>Chat {index + 1}</span>
@@ -62,7 +75,7 @@ export function ChatPanel({
                   e.stopPropagation();
                   onCloseTab(chat.id);
                 }}
-                className="ml-1 p-0.5 rounded hover:bg-destructive/20 hover:text-destructive transition-colors"
+                className="ml-1 p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-colors"
               >
                 <X className="h-3 w-3" />
               </span>
@@ -83,10 +96,10 @@ export function ChatPanel({
         ))}
 
         {chats.length === 0 && (
-          <div className="h-full flex items-center justify-center text-muted-foreground text-sm p-4 text-center">
+          <div className="h-full flex items-center justify-center text-gray-500 dark:text-neutral-500 text-sm p-4 text-center">
             <div>
               <p className="mb-2">Drag to select an area in the document</p>
-              <p className="text-xs">Press Enter to capture a screenshot and start a chat</p>
+              <p className="text-xs text-gray-400 dark:text-neutral-600">Press Enter to capture a screenshot and start a chat</p>
             </div>
           </div>
         )}

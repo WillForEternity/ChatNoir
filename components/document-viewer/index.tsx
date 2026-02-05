@@ -191,12 +191,12 @@ export function DocumentViewer({ document, directFile, directFileData, onClose }
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-background flex flex-col">
+    <div className="fixed inset-0 z-50 bg-background flex flex-col neu-context-white">
       {/* Header bar with document title and close button */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-neutral-700 bg-gray-50/50 dark:bg-neutral-950 h-[48px]">
         <div className="flex items-center gap-2 min-w-0">
-          <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-          <span className="text-sm font-medium truncate">
+          <FileText className="h-4 w-4 text-gray-500 dark:text-neutral-500 flex-shrink-0" />
+          <span className="text-sm font-medium text-gray-900 dark:text-neutral-100 truncate">
             {currentDocument?.filename || "Document Viewer"}
           </span>
           {(isProcessing || hasError) && (
@@ -212,10 +212,19 @@ export function DocumentViewer({ document, directFile, directFileData, onClose }
         </div>
         <button
           onClick={onClose}
-          className="p-1.5 rounded-md hover:bg-muted transition-colors"
+          className={cn(
+            "p-2 rounded-xl transition-all duration-200",
+            "bg-gray-50 dark:bg-neutral-950",
+            "shadow-[3px_3px_6px_rgba(0,0,0,0.08),-3px_-3px_6px_rgba(255,255,255,0.8)]",
+            "dark:shadow-[3px_3px_6px_rgba(0,0,0,0.4),-3px_-3px_6px_rgba(255,255,255,0.03)]",
+            "hover:shadow-[4px_4px_8px_rgba(0,0,0,0.1),-4px_-4px_8px_rgba(255,255,255,0.9)]",
+            "dark:hover:shadow-[4px_4px_8px_rgba(0,0,0,0.5),-4px_-4px_8px_rgba(255,255,255,0.04)]",
+            "active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.1),inset_-3px_-3px_6px_rgba(255,255,255,0.9)]",
+            "dark:active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.5),inset_-3px_-3px_6px_rgba(255,255,255,0.04)]"
+          )}
           title="Close (Esc)"
         >
-          <X className="h-4 w-4" />
+          <X className="h-4 w-4 text-gray-500 dark:text-neutral-500" />
         </button>
       </div>
 
@@ -260,7 +269,7 @@ export function DocumentViewer({ document, directFile, directFileData, onClose }
                 />
               )}
             </Panel>
-            <PanelResizeHandle className="w-1 bg-border hover:bg-primary/50 transition-colors" />
+            <PanelResizeHandle className="w-1 bg-gray-200 dark:bg-neutral-700 hover:bg-fuchsia-500 dark:hover:bg-[#ff00ff] transition-colors" />
           </>
         )}
 
@@ -268,11 +277,14 @@ export function DocumentViewer({ document, directFile, directFileData, onClose }
         {sidebarCollapsed && !isDirectView && (
           <div
             onClick={() => sidebarRef.current?.expand()}
-            className="w-10 flex flex-col items-center justify-center gap-1 border-r bg-muted/30 hover:bg-muted cursor-pointer transition-colors group"
+            className={cn(
+              "w-12 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all group",
+              "bg-gray-50/50 dark:bg-neutral-950 border-r border-gray-200 dark:border-neutral-700"
+            )}
             title="Show documents sidebar"
           >
-            <FileText className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-            <ChevronRight className="h-3 w-3 text-muted-foreground group-hover:text-foreground transition-colors" />
+            <FileText className="h-4 w-4 text-gray-500 dark:text-neutral-500 group-hover:text-gray-700 dark:group-hover:text-neutral-300 transition-colors" />
+            <ChevronRight className="h-3 w-3 text-gray-500 dark:text-neutral-500 group-hover:text-gray-700 dark:group-hover:text-neutral-300 transition-colors" />
           </div>
         )}
 
@@ -294,7 +306,7 @@ export function DocumentViewer({ document, directFile, directFileData, onClose }
         </Panel>
 
         {/* Right - Chat Panel (always in DOM, collapsible) */}
-        <PanelResizeHandle className="w-1 bg-border hover:bg-primary/50 transition-colors" />
+        <PanelResizeHandle className="w-1 bg-gray-200 dark:bg-neutral-700 hover:bg-fuchsia-500 dark:hover:bg-[#ff00ff] transition-colors" />
         <Panel
           ref={chatPanelRef}
           defaultSize={0}
@@ -320,19 +332,22 @@ export function DocumentViewer({ document, directFile, directFileData, onClose }
         {chatPanelCollapsed && (
           <div
             onClick={() => chatPanelRef.current?.expand()}
-            className="w-10 flex flex-col items-center justify-center gap-1 border-l bg-muted/30 hover:bg-muted cursor-pointer transition-colors group relative"
+            className={cn(
+              "w-12 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all group relative",
+              "bg-gray-50/50 dark:bg-neutral-950 border-l border-gray-200 dark:border-neutral-700"
+            )}
             title="Show chat panel"
           >
             <div className="relative">
-              <MessageSquare className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+              <MessageSquare className="h-4 w-4 text-gray-500 dark:text-neutral-500 group-hover:text-gray-700 dark:group-hover:text-neutral-300 transition-colors" />
               {/* Badge showing number of active chats (only when there are chats) */}
               {chats.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center bg-primary text-primary-foreground text-[10px] font-medium rounded-full px-0.5">
+                <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center bg-fuchsia-500 dark:bg-[#ff00ff] text-white text-[10px] font-medium rounded-full px-0.5 shadow-lg shadow-fuchsia-500/30 dark:shadow-[#ff00ff]/30">
                   {chats.length}
                 </span>
               )}
             </div>
-            <ChevronLeft className="h-3 w-3 text-muted-foreground group-hover:text-foreground transition-colors" />
+            <ChevronLeft className="h-3 w-3 text-gray-500 dark:text-neutral-500 group-hover:text-gray-700 dark:group-hover:text-neutral-300 transition-colors" />
           </div>
         )}
       </PanelGroup>

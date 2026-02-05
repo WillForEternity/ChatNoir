@@ -12,9 +12,10 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from "ai";
-import { Loader2 } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import { useClientTools } from "@/lib/use-client-tools";
 import { ChatMessage, type ChatMessageData } from "@/components/chat";
+import { cn } from "@/lib/utils";
 import type { MarginChat } from "./index";
 
 interface ChatInstanceProps {
@@ -135,10 +136,10 @@ export function ChatInstance({ chat }: ChatInstanceProps) {
   const isScreenshot = !!chat.selection.screenshot;
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col bg-white dark:bg-neutral-950">
       {/* Selection Preview Badge */}
-      <div className="px-3 py-2 bg-muted/30 border-b flex-shrink-0">
-        <div className="text-xs text-muted-foreground mb-1">
+      <div className="px-3 py-2 bg-gray-50/50 dark:bg-neutral-900/50 border-b border-gray-200 dark:border-neutral-700 flex-shrink-0">
+        <div className="text-xs text-gray-500 dark:text-neutral-500 mb-1">
           Selection {chat.selection.page ? `(page ${chat.selection.page})` : ""}:
         </div>
         {isScreenshot ? (
@@ -147,11 +148,11 @@ export function ChatInstance({ chat }: ChatInstanceProps) {
             <img
               src={chat.selection.screenshot}
               alt="Selected area"
-              className="max-h-24 rounded border border-border object-contain"
+              className="max-h-24 rounded-lg border border-gray-200 dark:border-neutral-700 object-contain shadow-sm"
             />
           </div>
         ) : chat.selection.text ? (
-          <div className="text-xs truncate italic">
+          <div className="text-xs truncate italic text-gray-600 dark:text-neutral-400">
             &ldquo;{chat.selection.text.slice(0, 100)}
             {chat.selection.text.length > 100 ? "..." : ""}&rdquo;
           </div>
@@ -172,7 +173,7 @@ export function ChatInstance({ chat }: ChatInstanceProps) {
         ))}
 
         {isLoading && messages.length === 0 && (
-          <div className="flex items-center gap-2 text-muted-foreground text-sm ml-2">
+          <div className="flex items-center gap-2 text-gray-500 dark:text-neutral-500 text-sm ml-2">
             <Loader2 className="h-3 w-3 animate-spin" />
             <span>Thinking...</span>
           </div>
@@ -182,21 +183,33 @@ export function ChatInstance({ chat }: ChatInstanceProps) {
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="p-3 border-t flex-shrink-0">
+      <form onSubmit={handleSubmit} className="p-3 border-t border-gray-200 dark:border-neutral-700 flex-shrink-0">
         <div className="flex gap-2">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about this section..."
-            className="flex-1 px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+            className={cn(
+              "flex-1 px-3 py-2 rounded-xl text-sm transition-all duration-200",
+              "bg-gray-50 dark:bg-neutral-900 text-gray-900 dark:text-neutral-100",
+              "border border-gray-200 dark:border-neutral-700",
+              "focus:outline-none focus:ring-2 focus:ring-fuchsia-500/50 dark:focus:ring-[#ff00ff]/50",
+              "placeholder:text-gray-400 dark:placeholder:text-neutral-600"
+            )}
             disabled={status !== "ready"}
           />
           <button
             type="submit"
             disabled={status !== "ready" || !input.trim()}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50 transition-opacity"
+            className={cn(
+              "px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 disabled:opacity-50",
+              "bg-fuchsia-500 dark:bg-[#ff00ff] text-white",
+              "shadow-[3px_3px_6px_rgba(0,0,0,0.15),-3px_-3px_6px_rgba(255,255,255,0.3)]",
+              "hover:shadow-[4px_4px_8px_rgba(0,0,0,0.2),-4px_-4px_8px_rgba(255,255,255,0.4)]",
+              "active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.2),inset_-3px_-3px_6px_rgba(255,255,255,0.1)]"
+            )}
           >
-            Send
+            <Send className="h-4 w-4" />
           </button>
         </div>
       </form>

@@ -81,8 +81,8 @@ export function TextViewer({ documentId, onSelection }: TextViewerProps) {
   }
 
   return (
-    <div ref={containerRef} className="h-full overflow-auto p-8">
-      <div className="max-w-3xl mx-auto prose dark:prose-invert prose-sm">
+    <div ref={containerRef} className="h-full overflow-auto p-8 bg-gray-100 dark:bg-neutral-900">
+      <div className="max-w-3xl mx-auto prose dark:prose-invert prose-sm bg-white dark:bg-neutral-950 p-8 rounded-2xl shadow-[8px_8px_20px_rgba(0,0,0,0.08),-8px_-8px_20px_rgba(255,255,255,0.8)] dark:shadow-[8px_8px_20px_rgba(0,0,0,0.4),-8px_-8px_20px_rgba(255,255,255,0.02)]">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
       </div>
     </div>

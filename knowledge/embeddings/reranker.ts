@@ -54,7 +54,7 @@ export interface RerankResult {
  */
 export interface RerankerConfig {
   /** Which reranking backend to use */
-  backend: "cohere" | "openai" | "none";
+  backend: "cohere" | "openai" | "api" | "none";
   /** Cohere API key (optional, falls back to env) */
   cohereApiKey?: string;
   /** OpenAI API key (optional, falls back to env) */
@@ -93,16 +93,23 @@ export async function rerank(
     return [];
   }
 
-  // If no reranking, just return documents with their original scores
+  // If no reranking backend available, use semantic scores from metadata if available
+  // (RRF originalScore is typically very small ~0.01-0.03, not useful for display)
   if (finalConfig.backend === "none") {
-    return documents.map((doc, index) => ({
-      id: doc.id,
-      text: doc.text,
-      relevanceScore: doc.originalScore ?? 0,
-      originalScore: doc.originalScore,
-      rank: index + 1,
-      metadata: doc.metadata,
-    }));
+    return documents.map((doc, index) => {
+      // Try to get semantic score from metadata (more interpretable than RRF score)
+      const semanticScore = (doc.metadata as Record<string, unknown>)?.semanticScore;
+      const displayScore = typeof semanticScore === "number" ? semanticScore : (doc.originalScore ?? 0);
+      
+      return {
+        id: doc.id,
+        text: doc.text,
+        relevanceScore: displayScore,
+        originalScore: doc.originalScore,
+        rank: index + 1,
+        metadata: doc.metadata,
+      };
+    });
   }
 
   try {
@@ -111,20 +118,27 @@ export async function rerank(
         return await rerankWithCohere(query, documents, finalConfig);
       case "openai":
         return await rerankWithOpenAI(query, documents, finalConfig);
+      case "api":
+        return await rerankWithAPI(query, documents, finalConfig);
       default:
         throw new Error(`Unknown reranker backend: ${finalConfig.backend}`);
     }
   } catch (error) {
     console.error("[Reranker] Error during reranking:", error);
-    // Fallback to original order on error
-    return documents.map((doc, index) => ({
-      id: doc.id,
-      text: doc.text,
-      relevanceScore: doc.originalScore ?? 0,
-      originalScore: doc.originalScore,
-      rank: index + 1,
-      metadata: doc.metadata,
-    }));
+    // Fallback to original order on error, use semantic scores if available
+    return documents.map((doc, index) => {
+      const semanticScore = (doc.metadata as Record<string, unknown>)?.semanticScore;
+      const displayScore = typeof semanticScore === "number" ? semanticScore : (doc.originalScore ?? 0);
+      
+      return {
+        id: doc.id,
+        text: doc.text,
+        relevanceScore: displayScore,
+        originalScore: doc.originalScore,
+        rank: index + 1,
+        metadata: doc.metadata,
+      };
+    });
   }
 }
 
@@ -184,7 +198,7 @@ async function rerankWithCohere(
     }
   );
 
-  // Filter by threshold
+  // Filter by threshold (config already has defaults merged from parent)
   return results.filter((r) => r.relevanceScore >= (config.threshold ?? 0));
 }
 
@@ -244,6 +258,47 @@ async function rerankWithOpenAI(
 }
 
 /**
+ * Rerank using the server-side API endpoint.
+ * This allows owners to use their env-configured API keys.
+ */
+async function rerankWithAPI(
+  query: string,
+  documents: RerankDocument[],
+  config: RerankerConfig
+): Promise<RerankResult[]> {
+  console.log("[Reranker] Using server-side API for reranking");
+  
+  // Get user's OpenAI key from localStorage (for non-owners)
+  const keys = typeof window !== "undefined" ? getApiKeys() : {};
+  
+  const response = await fetch("/api/rerank", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(keys.openaiApiKey ? { "x-openai-api-key": keys.openaiApiKey } : {}),
+    },
+    body: JSON.stringify({
+      query,
+      documents: documents.map((doc) => ({
+        id: doc.id,
+        text: doc.text,
+        originalScore: doc.originalScore,
+        metadata: doc.metadata,
+      })),
+      topK: config.topK ?? 10,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(`Rerank API failed: ${error.error || response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.results as RerankResult[];
+}
+
+/**
  * Score a single document using GPT.
  */
 async function scoreWithGPT(
@@ -269,17 +324,22 @@ async function scoreWithGPT(
       messages: [
         {
           role: "system",
-          content: `You are a relevance scoring system. Given a query and a document, output ONLY a decimal number from 0.00 to 1.00 representing how relevant the document is to answering the query.
+          content: `You are a relevance scoring system for document retrieval. Given a search query and a document chunk, output ONLY a decimal number from 0.00 to 1.00 representing how relevant the document is to the query.
 
-Use the FULL continuous scale with fine-grained precision:
-- 0.95-1.00: Perfect match, directly and completely answers the query
-- 0.80-0.94: Highly relevant, contains the answer with minor gaps
-- 0.60-0.79: Good relevance, addresses the topic with useful information
-- 0.40-0.59: Moderate relevance, tangentially related content
-- 0.20-0.39: Low relevance, mentions related concepts but doesn't help
-- 0.00-0.19: Irrelevant, no meaningful connection to the query
+IMPORTANT: The query may be a question OR a topic/keyword search. Score based on topical relevance, not just whether the document directly "answers" the query.
 
-Output ONLY a decimal number like 0.73 or 0.42. Use two decimal places. No other text.`,
+Use the FULL scale - don't be overly conservative:
+- 0.90-1.00: Excellent match - document is clearly about this exact topic/question
+- 0.75-0.89: Strong match - document discusses the topic with substantial relevant content
+- 0.55-0.74: Good match - document contains relevant information about the topic
+- 0.35-0.54: Partial match - document touches on related concepts
+- 0.15-0.34: Weak match - only peripheral connection to the query
+- 0.00-0.14: No match - unrelated content
+
+Example: Query "Sieve of Eratosthenes" + document about the sieve algorithm → 0.85-0.95
+Example: Query "how does authentication work" + document explaining auth flows → 0.80-0.90
+
+Output ONLY a decimal number like 0.73 or 0.85. Use two decimal places. No other text.`,
         },
         {
           role: "user",
@@ -289,7 +349,7 @@ Document: ${truncatedDoc}`,
         },
       ],
       max_tokens: 10,
-      temperature: 0.1, // Slight temperature for more nuanced scoring
+      temperature: 0.0, // Deterministic for consistent scoring
     }),
   });
 
@@ -332,11 +392,14 @@ function getOpenAIKey(): string | undefined {
 export function isRerankingAvailable(): {
   cohere: boolean;
   openai: boolean;
+  api: boolean;
 } {
   const keys = typeof window !== "undefined" ? getApiKeys() : { cohereApiKey: undefined, openaiApiKey: undefined };
   return {
     cohere: !!keys.cohereApiKey,
     openai: !!keys.openaiApiKey,
+    // API backend is always available (server handles auth/keys)
+    api: typeof window !== "undefined",
   };
 }
 
@@ -344,13 +407,18 @@ export function isRerankingAvailable(): {
  * Get recommended reranker based on available keys.
  * 
  * Priority:
- * 1. Cohere (purpose-built, fastest, most cost-effective for reranking)
- * 2. OpenAI (uses GPT-4o-mini as LLM-reranker, leverages existing key)
- * 3. None (fallback if no keys available)
+ * 1. Cohere (purpose-built, fastest, most cost-effective for reranking) - if key in localStorage
+ * 2. API (server-side, works for owners with env keys OR users with localStorage keys)
+ * 3. OpenAI direct (client-side, only if key in localStorage)
+ * 4. None (fallback, uses semantic scores)
  */
 export function getRecommendedReranker(): RerankerConfig["backend"] {
   const available = isRerankingAvailable();
+  // Prefer Cohere if user has it configured (fastest, purpose-built)
   if (available.cohere) return "cohere";
+  // Use API backend by default - it handles both owners (env keys) and users (localStorage keys)
+  if (available.api) return "api";
+  // Direct OpenAI only if we have the key locally
   if (available.openai) return "openai";
   return "none";
 }

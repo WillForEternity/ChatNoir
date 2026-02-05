@@ -18,6 +18,7 @@ import "react-pdf/dist/esm/Page/AnnotationLayer.css";
 import { ChevronLeft, ChevronRight, Minus, Plus, Loader2, ChevronsUp, ChevronsDown, Camera, X, SunMoon } from "lucide-react";
 import html2canvas from "html2canvas";
 import { getLargeDocumentFile } from "@/knowledge/large-documents";
+import { cn } from "@/lib/utils";
 import type { SelectionData } from "./index";
 
 // Configure PDF.js worker - use a CDN with the exact version from react-pdf
@@ -132,14 +133,6 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const observerRef = useRef<IntersectionObserver | null>(null);
   
-  // Track which document is currently loaded to ensure stable file reference
-  // We use this to avoid recreating the file object on every render
-  const loadedDocumentRef = useRef<{
-    documentId: string | undefined;
-    directFileData: ArrayBuffer | undefined;
-    fileSource: { data: Uint8Array } | null;
-  }>({ documentId: undefined, directFileData: undefined, fileSource: null });
-
   // Selection state
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionRect, setSelectionRect] = useState<SelectionRect | null>(null);
@@ -530,36 +523,14 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
 
   // Memoize the file prop to prevent unnecessary reloads
   // react-pdf warns if the file object changes reference even when data is the same
-  // We track document identity (documentId or directFileData reference) and only create
-  // a new file source object when the document actually changes
-  // 
-  // IMPORTANT: We update the ref when fileData changes, but the fileSource identity 
-  // only changes when the document identity changes. This prevents react-pdf from
-  // seeing a "new" file object on every render while still using the latest data.
-  
-  // Update the cached file source when we have new data
-  if (fileData) {
-    const cached = loadedDocumentRef.current;
-    // Only create a new object if the document identity changed
-    if (cached.documentId !== documentId || cached.directFileData !== directFileData) {
-      loadedDocumentRef.current = { 
-        documentId, 
-        directFileData, 
-        fileSource: { data: fileData }
-      };
-    } else if (cached.fileSource) {
-      // Same document, just update the data in the existing object
-      // This maintains object identity while updating content
-      cached.fileSource.data = fileData;
-    } else {
-      // Same document identity but no file source yet (shouldn't happen normally)
-      loadedDocumentRef.current.fileSource = { data: fileData };
-    }
-  } else {
-    loadedDocumentRef.current = { documentId: undefined, directFileData: undefined, fileSource: null };
-  }
-  
-  const fileSource = loadedDocumentRef.current.fileSource;
+  // We use useMemo with fileData as the dependency - fileData only changes when:
+  // 1. A new document is loaded (different documentId)
+  // 2. Direct file data is provided/changed
+  // This ensures the file source object maintains stable identity between renders
+  const fileSource = useMemo(() => {
+    if (!fileData) return null;
+    return { data: fileData };
+  }, [fileData]);
 
   // Calculate selection rectangle display coordinates
   const getSelectionStyle = useCallback((rect: SelectionRect) => {
@@ -598,7 +569,7 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
     <div className="h-full flex flex-col">
       {/* Selection Hint Banner */}
       {!pendingSelection && (
-        <div className="flex-shrink-0 flex items-center justify-center gap-2 px-4 py-1.5 bg-muted/50 border-b text-xs text-muted-foreground">
+        <div className="flex-shrink-0 flex items-center justify-center gap-2 px-4 py-1.5 bg-gray-50/50 dark:bg-neutral-900/50 border-b border-gray-200 dark:border-neutral-700 text-xs text-gray-500 dark:text-neutral-500">
           <Camera className="h-3.5 w-3.5" />
           <span>Drag to select an area, then press Enter to capture and chat</span>
         </div>
@@ -606,14 +577,20 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
 
       {/* Pending Selection Confirmation Banner */}
       {pendingSelection && (
-        <div className="flex-shrink-0 flex items-center justify-center gap-3 px-4 py-2 bg-highlight/10 border-b border-highlight/20">
-          <span className="text-sm text-highlight font-medium">
+        <div className="flex-shrink-0 flex items-center justify-center gap-3 px-4 py-2 bg-fuchsia-50 dark:bg-[#ff00ff]/10 border-b border-fuchsia-200 dark:border-[#ff00ff]/30">
+          <span className="text-sm text-fuchsia-600 dark:text-[#ff00ff] font-medium">
             Selection ready on page {pendingSelection.page}
           </span>
           <button
             onClick={captureSelection}
             disabled={isCapturing}
-            className="flex items-center gap-1.5 px-3 py-1 bg-highlight text-highlight-foreground rounded text-sm font-medium hover:bg-highlight/90 disabled:opacity-50 transition-colors"
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-all duration-200 disabled:opacity-50",
+              "bg-fuchsia-500 dark:bg-[#ff00ff] text-white",
+              "shadow-[3px_3px_6px_rgba(0,0,0,0.15),-3px_-3px_6px_rgba(255,255,255,0.3)]",
+              "hover:shadow-[4px_4px_8px_rgba(0,0,0,0.2),-4px_-4px_8px_rgba(255,255,255,0.4)]",
+              "active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.2),inset_-3px_-3px_6px_rgba(255,255,255,0.1)]"
+            )}
           >
             {isCapturing ? (
               <>
@@ -629,7 +606,11 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
           </button>
           <button
             onClick={cancelSelection}
-            className="flex items-center gap-1 px-2 py-1 text-muted-foreground hover:text-foreground rounded text-sm transition-colors"
+            className={cn(
+              "flex items-center gap-1 px-2 py-1.5 rounded-xl text-sm transition-all duration-200",
+              "text-gray-500 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-neutral-300",
+              "hover:bg-gray-100 dark:hover:bg-neutral-800"
+            )}
           >
             <X className="h-3.5 w-3.5" />
             <span>Cancel (Esc)</span>
@@ -640,7 +621,7 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
       {/* PDF Content - Scrollable, renders visible pages + buffer */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto bg-muted/30 flex flex-col items-center py-4 gap-4 select-none"
+        className="flex-1 overflow-auto bg-gray-100 dark:bg-neutral-900 flex flex-col items-center py-4 gap-4 select-none"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -716,15 +697,24 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
       </div>
 
       {/* Navigation Bar - Sticky Bottom */}
-      <div className="navigation-bar sticky bottom-0 flex items-center justify-center gap-4 p-3 bg-background/95 backdrop-blur border-t">
+      <div className="navigation-bar sticky bottom-0 flex items-center justify-center gap-4 p-3 bg-white/95 dark:bg-neutral-950/95 backdrop-blur border-t border-gray-200 dark:border-neutral-700 neu-context-white">
         {/* Jump to start */}
         <button
           onClick={scrollToFirst}
           disabled={visiblePage <= 1}
-          className="p-1.5 rounded hover:bg-muted disabled:opacity-30 transition-colors"
+          className={cn(
+            "p-2 rounded-xl transition-all duration-200 disabled:opacity-30",
+            "bg-white dark:bg-neutral-950",
+            "shadow-[3px_3px_6px_rgba(0,0,0,0.08),-3px_-3px_6px_rgba(255,255,255,0.8)]",
+            "dark:shadow-[3px_3px_6px_rgba(0,0,0,0.4),-3px_-3px_6px_rgba(255,255,255,0.03)]",
+            "hover:shadow-[4px_4px_8px_rgba(0,0,0,0.1),-4px_-4px_8px_rgba(255,255,255,0.9)]",
+            "dark:hover:shadow-[4px_4px_8px_rgba(0,0,0,0.5),-4px_-4px_8px_rgba(255,255,255,0.04)]",
+            "active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.1),inset_-3px_-3px_6px_rgba(255,255,255,0.9)]",
+            "dark:active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.5),inset_-3px_-3px_6px_rgba(255,255,255,0.04)]"
+          )}
           title="Go to first page"
         >
-          <ChevronsUp className="h-4 w-4" />
+          <ChevronsUp className="h-4 w-4 text-gray-600 dark:text-neutral-400" />
         </button>
 
         {/* Page Navigation */}
@@ -732,21 +722,39 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
           <button
             onClick={() => scrollToPage(Math.max(1, visiblePage - 1))}
             disabled={visiblePage <= 1}
-            className="p-1.5 rounded hover:bg-muted disabled:opacity-30 transition-colors"
+            className={cn(
+              "p-2 rounded-xl transition-all duration-200 disabled:opacity-30",
+              "bg-white dark:bg-neutral-950",
+              "shadow-[3px_3px_6px_rgba(0,0,0,0.08),-3px_-3px_6px_rgba(255,255,255,0.8)]",
+              "dark:shadow-[3px_3px_6px_rgba(0,0,0,0.4),-3px_-3px_6px_rgba(255,255,255,0.03)]",
+              "hover:shadow-[4px_4px_8px_rgba(0,0,0,0.1),-4px_-4px_8px_rgba(255,255,255,0.9)]",
+              "dark:hover:shadow-[4px_4px_8px_rgba(0,0,0,0.5),-4px_-4px_8px_rgba(255,255,255,0.04)]",
+              "active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.1),inset_-3px_-3px_6px_rgba(255,255,255,0.9)]",
+              "dark:active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.5),inset_-3px_-3px_6px_rgba(255,255,255,0.04)]"
+            )}
             title="Previous page"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-4 w-4 text-gray-600 dark:text-neutral-400" />
           </button>
-          <span className="text-sm min-w-[80px] text-center">
+          <span className="text-sm min-w-[80px] text-center text-gray-700 dark:text-neutral-300">
             Page {visiblePage} of {numPages || "..."}
           </span>
           <button
             onClick={() => scrollToPage(Math.min(numPages, visiblePage + 1))}
             disabled={visiblePage >= numPages}
-            className="p-1.5 rounded hover:bg-muted disabled:opacity-30 transition-colors"
+            className={cn(
+              "p-2 rounded-xl transition-all duration-200 disabled:opacity-30",
+              "bg-white dark:bg-neutral-950",
+              "shadow-[3px_3px_6px_rgba(0,0,0,0.08),-3px_-3px_6px_rgba(255,255,255,0.8)]",
+              "dark:shadow-[3px_3px_6px_rgba(0,0,0,0.4),-3px_-3px_6px_rgba(255,255,255,0.03)]",
+              "hover:shadow-[4px_4px_8px_rgba(0,0,0,0.1),-4px_-4px_8px_rgba(255,255,255,0.9)]",
+              "dark:hover:shadow-[4px_4px_8px_rgba(0,0,0,0.5),-4px_-4px_8px_rgba(255,255,255,0.04)]",
+              "active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.1),inset_-3px_-3px_6px_rgba(255,255,255,0.9)]",
+              "dark:active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.5),inset_-3px_-3px_6px_rgba(255,255,255,0.04)]"
+            )}
             title="Next page"
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-4 w-4 text-gray-600 dark:text-neutral-400" />
           </button>
         </div>
 
@@ -754,43 +762,82 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
         <button
           onClick={scrollToLast}
           disabled={visiblePage >= numPages}
-          className="p-1.5 rounded hover:bg-muted disabled:opacity-30 transition-colors"
+          className={cn(
+            "p-2 rounded-xl transition-all duration-200 disabled:opacity-30",
+            "bg-white dark:bg-neutral-950",
+            "shadow-[3px_3px_6px_rgba(0,0,0,0.08),-3px_-3px_6px_rgba(255,255,255,0.8)]",
+            "dark:shadow-[3px_3px_6px_rgba(0,0,0,0.4),-3px_-3px_6px_rgba(255,255,255,0.03)]",
+            "hover:shadow-[4px_4px_8px_rgba(0,0,0,0.1),-4px_-4px_8px_rgba(255,255,255,0.9)]",
+            "dark:hover:shadow-[4px_4px_8px_rgba(0,0,0,0.5),-4px_-4px_8px_rgba(255,255,255,0.04)]",
+            "active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.1),inset_-3px_-3px_6px_rgba(255,255,255,0.9)]",
+            "dark:active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.5),inset_-3px_-3px_6px_rgba(255,255,255,0.04)]"
+          )}
           title="Go to last page"
         >
-          <ChevronsDown className="h-4 w-4" />
+          <ChevronsDown className="h-4 w-4 text-gray-600 dark:text-neutral-400" />
         </button>
 
         {/* Zoom Controls */}
-        <div className="flex items-center gap-2 border-l pl-4">
+        <div className="flex items-center gap-2 border-l border-gray-200 dark:border-neutral-700 pl-4">
           <button
             onClick={() => setScale((s) => Math.max(0.5, s - 0.1))}
-            className="p-1.5 rounded hover:bg-muted transition-colors"
+            className={cn(
+              "p-2 rounded-xl transition-all duration-200",
+              "bg-white dark:bg-neutral-950",
+              "shadow-[3px_3px_6px_rgba(0,0,0,0.08),-3px_-3px_6px_rgba(255,255,255,0.8)]",
+              "dark:shadow-[3px_3px_6px_rgba(0,0,0,0.4),-3px_-3px_6px_rgba(255,255,255,0.03)]",
+              "hover:shadow-[4px_4px_8px_rgba(0,0,0,0.1),-4px_-4px_8px_rgba(255,255,255,0.9)]",
+              "dark:hover:shadow-[4px_4px_8px_rgba(0,0,0,0.5),-4px_-4px_8px_rgba(255,255,255,0.04)]",
+              "active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.1),inset_-3px_-3px_6px_rgba(255,255,255,0.9)]",
+              "dark:active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.5),inset_-3px_-3px_6px_rgba(255,255,255,0.04)]"
+            )}
             title="Zoom out"
           >
-            <Minus className="h-4 w-4" />
+            <Minus className="h-4 w-4 text-gray-600 dark:text-neutral-400" />
           </button>
-          <span className="text-sm min-w-[50px] text-center">
+          <span className="text-sm min-w-[50px] text-center text-gray-700 dark:text-neutral-300">
             {Math.round(scale * 100)}%
           </span>
           <button
             onClick={() => setScale((s) => Math.min(2.5, s + 0.1))}
-            className="p-1.5 rounded hover:bg-muted transition-colors"
+            className={cn(
+              "p-2 rounded-xl transition-all duration-200",
+              "bg-white dark:bg-neutral-950",
+              "shadow-[3px_3px_6px_rgba(0,0,0,0.08),-3px_-3px_6px_rgba(255,255,255,0.8)]",
+              "dark:shadow-[3px_3px_6px_rgba(0,0,0,0.4),-3px_-3px_6px_rgba(255,255,255,0.03)]",
+              "hover:shadow-[4px_4px_8px_rgba(0,0,0,0.1),-4px_-4px_8px_rgba(255,255,255,0.9)]",
+              "dark:hover:shadow-[4px_4px_8px_rgba(0,0,0,0.5),-4px_-4px_8px_rgba(255,255,255,0.04)]",
+              "active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.1),inset_-3px_-3px_6px_rgba(255,255,255,0.9)]",
+              "dark:active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.5),inset_-3px_-3px_6px_rgba(255,255,255,0.04)]"
+            )}
             title="Zoom in"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4 text-gray-600 dark:text-neutral-400" />
           </button>
         </div>
 
         {/* Invert Colors Toggle */}
-        <div className="flex items-center gap-2 border-l pl-4">
+        <div className="flex items-center gap-2 border-l border-gray-200 dark:border-neutral-700 pl-4">
           <button
             onClick={() => setIsInverted((prev) => !prev)}
-            className={`p-1.5 rounded transition-colors ${
-              isInverted ? "bg-primary text-primary-foreground" : "hover:bg-muted"
-            }`}
+            className={cn(
+              "p-2 rounded-xl transition-all duration-200",
+              isInverted
+                ? cn(
+                    "bg-fuchsia-500 dark:bg-[#ff00ff] text-white",
+                    "shadow-[inset_3px_3px_6px_rgba(0,0,0,0.2),inset_-3px_-3px_6px_rgba(255,255,255,0.1)]"
+                  )
+                : cn(
+                    "bg-white dark:bg-neutral-950",
+                    "shadow-[3px_3px_6px_rgba(0,0,0,0.08),-3px_-3px_6px_rgba(255,255,255,0.8)]",
+                    "dark:shadow-[3px_3px_6px_rgba(0,0,0,0.4),-3px_-3px_6px_rgba(255,255,255,0.03)]",
+                    "hover:shadow-[4px_4px_8px_rgba(0,0,0,0.1),-4px_-4px_8px_rgba(255,255,255,0.9)]",
+                    "dark:hover:shadow-[4px_4px_8px_rgba(0,0,0,0.5),-4px_-4px_8px_rgba(255,255,255,0.04)]"
+                  )
+            )}
             title={isInverted ? "Restore original colors" : "Invert colors"}
           >
-            <SunMoon className="h-4 w-4" />
+            <SunMoon className={cn("h-4 w-4", isInverted ? "text-white" : "text-gray-600 dark:text-neutral-400")} />
           </button>
         </div>
       </div>
