@@ -6,6 +6,9 @@
  * Renders PDFs using react-pdf with screenshot-based selection support.
  * Drag to select a region, press Enter to capture and send to chat.
  * Optimized for fast first-page rendering and progressive page loading.
+ * 
+ * Session-level caching: PDF files loaded from IndexedDB are cached in memory
+ * for the duration of the page session, so re-opening the same document is instant.
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
@@ -17,9 +20,77 @@ import html2canvas from "html2canvas";
 import { getLargeDocumentFile } from "@/knowledge/large-documents";
 import type { SelectionData } from "./index";
 
-// Configure PDF.js worker - use the worker bundled with react-pdf to avoid version mismatch
-// react-pdf 9.x bundles its own pdfjs, so we use its worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Configure PDF.js worker - use a CDN with the exact version from react-pdf
+// react-pdf 9.2.1 uses pdfjs-dist 4.8.69 internally
+// Using cdnjs which is more reliable than unpkg for ESM workers
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+
+// =============================================================================
+// SESSION-LEVEL PDF CACHE
+// =============================================================================
+// Cache PDF file data in memory for the page session. This avoids re-fetching
+// from IndexedDB and re-parsing when the user closes and re-opens a document.
+//
+// IMPORTANT: We store as Uint8Array because ArrayBuffer can be "detached" when
+// transferred to web workers (like PDF.js does). Uint8Array maintains a copy.
+
+interface CachedPDF {
+  /** Stored as Uint8Array to prevent ArrayBuffer detachment issues */
+  data: Uint8Array;
+  cachedAt: number;
+}
+
+// Module-level cache - persists for the page session (until page reload)
+const pdfCache = new Map<string, CachedPDF>();
+
+// Maximum cache size (in number of documents) to prevent memory issues
+const MAX_CACHE_SIZE = 10;
+
+/**
+ * Get PDF from cache or load from IndexedDB.
+ * Returns a fresh copy of the data each time to avoid detachment issues.
+ */
+async function getCachedPDF(documentId: string): Promise<Uint8Array | null> {
+  // Check cache first
+  const cached = pdfCache.get(documentId);
+  if (cached) {
+    // Return a copy to avoid detachment if PDF.js transfers the buffer
+    return new Uint8Array(cached.data);
+  }
+
+  // Load from IndexedDB
+  const file = await getLargeDocumentFile(documentId);
+  if (!file) {
+    return null;
+  }
+
+  // Convert to Uint8Array for safe storage
+  const uint8Data = new Uint8Array(file.data);
+
+  // Cache the result
+  // If cache is full, remove the oldest entry
+  if (pdfCache.size >= MAX_CACHE_SIZE) {
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+    for (const [key, value] of pdfCache.entries()) {
+      if (value.cachedAt < oldestTime) {
+        oldestTime = value.cachedAt;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey) {
+      pdfCache.delete(oldestKey);
+    }
+  }
+
+  pdfCache.set(documentId, {
+    data: uint8Data,
+    cachedAt: Date.now(),
+  });
+
+  // Return a copy for use
+  return new Uint8Array(uint8Data);
+}
 
 interface PDFViewerProps {
   /** Document ID for loading from IndexedDB (used when directFileData is not provided) */
@@ -47,7 +118,10 @@ interface SelectionRect {
 }
 
 export function PDFViewer({ documentId, directFileData, onSelection, onSelectionStateChange }: PDFViewerProps) {
-  const [fileData, setFileData] = useState<ArrayBuffer | null>(directFileData || null);
+  // Store file data as Uint8Array to avoid ArrayBuffer detachment issues
+  const [fileData, setFileData] = useState<Uint8Array | null>(() => 
+    directFileData ? new Uint8Array(directFileData) : null
+  );
   const [isLoading, setIsLoading] = useState(!directFileData);
   const [error, setError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState(0);
@@ -57,6 +131,14 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const observerRef = useRef<IntersectionObserver | null>(null);
+  
+  // Track which document is currently loaded to ensure stable file reference
+  // We use this to avoid recreating the file object on every render
+  const loadedDocumentRef = useRef<{
+    documentId: string | undefined;
+    directFileData: ArrayBuffer | undefined;
+    fileSource: { data: Uint8Array } | null;
+  }>({ documentId: undefined, directFileData: undefined, fileSource: null });
 
   // Selection state
   const [isSelecting, setIsSelecting] = useState(false);
@@ -76,28 +158,42 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
   // If directFileData changes (e.g., new file dropped), update immediately
   useEffect(() => {
     if (directFileData) {
-      setFileData(directFileData);
+      setFileData(new Uint8Array(directFileData));
       setIsLoading(false);
       setError(null);
       setLoadedPages(new Set([1]));
+      setRenderedPages(new Set([1, 2, 3])); // Reset rendered pages for new document
     }
   }, [directFileData]);
 
-  // Load PDF from IndexedDB only if no directFileData is provided
+  // Load PDF from cache or IndexedDB (only if no directFileData is provided)
   useEffect(() => {
-    // Skip IDB loading if we have direct file data or no document ID
+    // Skip loading if we have direct file data or no document ID
     if (directFileData || !documentId) return;
 
     let cancelled = false;
+    
+    // Check if we might have it cached (instant check)
+    const cached = pdfCache.get(documentId);
+    if (cached) {
+      // Instant load from cache - return a copy to avoid detachment
+      setFileData(new Uint8Array(cached.data));
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
+
+    // Not cached, need to fetch from IndexedDB
     setIsLoading(true);
     setError(null);
     setLoadedPages(new Set([1])); // Reset to first page
+    setRenderedPages(new Set([1, 2, 3])); // Reset rendered pages
 
-    getLargeDocumentFile(documentId)
-      .then((file) => {
+    getCachedPDF(documentId)
+      .then((data) => {
         if (cancelled) return;
-        if (file) {
-          setFileData(file.data);
+        if (data) {
+          setFileData(data);
         } else {
           setError("PDF file not found in storage. The document may still be uploading.");
         }
@@ -113,29 +209,42 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
     return () => { cancelled = true; };
   }, [documentId, directFileData]);
 
-  // Calculate which pages should be rendered based on visible page
-  // Always prioritize pages 1-3 first (top-first approach), then pages around visible page
-  const pagesToRender = useMemo(() => {
-    if (numPages === 0) return [1];
+  // Track which pages should be rendered - once a page is rendered, keep it
+  // This provides a "render once, keep forever" approach for smooth scrolling
+  const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set([1, 2, 3]));
+  
+  // Expand rendered pages as user scrolls - add pages near visible page
+  useEffect(() => {
+    if (numPages === 0) return;
     
-    const pages = new Set<number>();
-    
-    // Always include first priority pages (1, 2, 3) for fast initial render
-    for (let i = 1; i <= Math.min(PRIORITY_PAGES, numPages); i++) {
-      pages.add(i);
-    }
-    
-    // Add pages around the current visible page
-    const start = Math.max(1, visiblePage - PAGES_TO_PRERENDER);
-    const end = Math.min(numPages, visiblePage + PAGES_TO_PRERENDER);
-    
-    for (let i = start; i <= end; i++) {
-      pages.add(i);
-    }
-    
-    // Return sorted array (pages render top to bottom)
-    return Array.from(pages).sort((a, b) => a - b);
+    setRenderedPages(prev => {
+      const updated = new Set(prev);
+      
+      // Always include first priority pages
+      for (let i = 1; i <= Math.min(PRIORITY_PAGES, numPages); i++) {
+        updated.add(i);
+      }
+      
+      // Add pages around visible page (with buffer for smooth scrolling)
+      const start = Math.max(1, visiblePage - PAGES_TO_PRERENDER);
+      const end = Math.min(numPages, visiblePage + PAGES_TO_PRERENDER);
+      
+      for (let i = start; i <= end; i++) {
+        updated.add(i);
+      }
+      
+      // Only update if we added new pages (never remove pages)
+      if (updated.size > prev.size) {
+        return updated;
+      }
+      return prev;
+    });
   }, [visiblePage, numPages]);
+  
+  // Convert to sorted array for rendering
+  const pagesToRender = useMemo(() => {
+    return Array.from(renderedPages).sort((a, b) => a - b);
+  }, [renderedPages]);
 
   // Setup IntersectionObserver to detect which page is visible
   useEffect(() => {
@@ -298,24 +407,49 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
         const scaleX = pdfCanvas.width / pdfCanvas.offsetWidth;
         const scaleY = pdfCanvas.height / pdfCanvas.offsetHeight;
         
+        // Calculate base dimensions at PDF resolution
+        const baseWidth = width * scaleX;
+        const baseHeight = height * scaleY;
+        
+        // Limit maximum dimensions to prevent huge images that could hang the API
+        // Max 1500px on longest side for API compatibility while maintaining readability
+        const MAX_DIMENSION = 1500;
+        let finalScale = 1;
+        
+        if (baseWidth > MAX_DIMENSION || baseHeight > MAX_DIMENSION) {
+          // Scale down to fit within max dimension
+          finalScale = MAX_DIMENSION / Math.max(baseWidth, baseHeight);
+        } else if (baseWidth < 800 && baseHeight < 800) {
+          // Small selection - scale up to 1.5x for better readability (but not 2x)
+          finalScale = 1.5;
+        }
+        
         // Set up the temp canvas with the selection dimensions
-        tempCanvas.width = width * scaleX * 2; // 2x for higher quality
-        tempCanvas.height = height * scaleY * 2;
+        tempCanvas.width = Math.round(baseWidth * finalScale);
+        tempCanvas.height = Math.round(baseHeight * finalScale);
         
         // Draw the selected portion of the PDF canvas
         ctx.drawImage(
           pdfCanvas,
           left * scaleX,
           top * scaleY,
-          width * scaleX,
-          height * scaleY,
+          baseWidth,
+          baseHeight,
           0,
           0,
           tempCanvas.width,
           tempCanvas.height
         );
         
-        screenshot = tempCanvas.toDataURL("image/png");
+        // Use JPEG for larger images (better compression), PNG for smaller ones (better quality)
+        const useJpeg = tempCanvas.width * tempCanvas.height > 500000; // > ~700x700
+        screenshot = useJpeg 
+          ? tempCanvas.toDataURL("image/jpeg", 0.85)
+          : tempCanvas.toDataURL("image/png");
+        
+        // Log size for debugging
+        const sizeKB = Math.round(screenshot.length / 1024);
+        console.log(`[PDFViewer] Screenshot: ${tempCanvas.width}x${tempCanvas.height}, ${sizeKB}KB, format=${useJpeg ? 'jpeg' : 'png'}`);
       } else {
         // Fallback to html2canvas if no canvas found (shouldn't happen for PDFs)
         const canvas = await html2canvas(pageElement, {
@@ -323,12 +457,12 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
           y: top,
           width,
           height,
-          scale: 2,
+          scale: 1.5, // Reduced from 2x
           useCORS: true,
           logging: false,
           backgroundColor: "#ffffff",
         });
-        screenshot = canvas.toDataURL("image/png");
+        screenshot = canvas.toDataURL("image/jpeg", 0.85);
       }
 
       // Send to chat
@@ -396,10 +530,36 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
 
   // Memoize the file prop to prevent unnecessary reloads
   // react-pdf warns if the file object changes reference even when data is the same
-  const fileSource = useMemo(() => {
-    if (!fileData) return null;
-    return { data: fileData };
-  }, [fileData]);
+  // We track document identity (documentId or directFileData reference) and only create
+  // a new file source object when the document actually changes
+  // 
+  // IMPORTANT: We update the ref when fileData changes, but the fileSource identity 
+  // only changes when the document identity changes. This prevents react-pdf from
+  // seeing a "new" file object on every render while still using the latest data.
+  
+  // Update the cached file source when we have new data
+  if (fileData) {
+    const cached = loadedDocumentRef.current;
+    // Only create a new object if the document identity changed
+    if (cached.documentId !== documentId || cached.directFileData !== directFileData) {
+      loadedDocumentRef.current = { 
+        documentId, 
+        directFileData, 
+        fileSource: { data: fileData }
+      };
+    } else if (cached.fileSource) {
+      // Same document, just update the data in the existing object
+      // This maintains object identity while updating content
+      cached.fileSource.data = fileData;
+    } else {
+      // Same document identity but no file source yet (shouldn't happen normally)
+      loadedDocumentRef.current.fileSource = { data: fileData };
+    }
+  } else {
+    loadedDocumentRef.current = { documentId: undefined, directFileData: undefined, fileSource: null };
+  }
+  
+  const fileSource = loadedDocumentRef.current.fileSource;
 
   // Calculate selection rectangle display coordinates
   const getSelectionStyle = useCallback((rect: SelectionRect) => {

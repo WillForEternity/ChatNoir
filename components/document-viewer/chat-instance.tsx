@@ -78,11 +78,18 @@ export function ChatInstance({ chat }: ChatInstanceProps) {
       hasSentInitial.current = true;
       const pageContext = page ? ` (from page ${page})` : "";
       
+      // Detect media type from data URL (could be png or jpeg)
+      const mediaType = screenshot.startsWith("data:image/jpeg") ? "image/jpeg" : "image/png";
+      
+      // Log size for debugging
+      const sizeKB = Math.round(screenshot.length / 1024);
+      console.log(`[ChatInstance] Sending image: ${sizeKB}KB, type=${mediaType}`);
+      
       // Send message with image attachment using AI SDK v6 parts format
       const parts: Array<{ type: "text"; text: string } | { type: "file"; mediaType: string; url: string }> = [
         {
           type: "file",
-          mediaType: "image/png",
+          mediaType,
           url: screenshot,
         },
         {
