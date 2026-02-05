@@ -12,7 +12,7 @@
  * - Hybrid search with RRF fusion for better precision/recall balance
  */
 
-import { getLargeDocumentsDb, removeDocumentUmapCache } from "./idb";
+import { getLargeDocumentsDb, removeDocumentUmapCache, storeDocumentFile, deleteDocumentFile, getDocumentFile } from "./idb";
 import { chunkMarkdown, type ChunkOptions } from "../embeddings/chunker";
 import { embedTexts, embedQuery } from "../embeddings/embed-client";
 import { rerank, getRecommendedReranker, type RerankDocument, type RerankerConfig } from "../embeddings/reranker";
@@ -22,6 +22,7 @@ import type {
   LargeDocumentChunk,
   LargeDocumentSearchResult,
   IndexingProgress,
+  LargeDocumentFile,
 } from "./types";
 
 /**
@@ -89,10 +90,86 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return denominator === 0 ? 0 : dot / denominator;
 }
 
+// =============================================================================
+// PDF EXTRACTION
+// =============================================================================
+
+/**
+ * Extract text from a PDF using PDF.js (client-side, free).
+ * Returns null if the extracted text is too short (likely a scanned PDF).
+ */
+export async function extractPdfText(
+  file: File
+): Promise<{ text: string; numPages: number } | null> {
+  try {
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf");
+    
+    // Configure worker if not already set
+    // Use unpkg CDN with matching version to avoid version mismatch errors
+    if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+      pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+    const pageTexts: string[] = [];
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const text = content.items
+        .map((item: { str?: string }) => item.str || "")
+        .join(" ");
+      pageTexts.push(text);
+    }
+
+    const fullText = pageTexts.join("\n\n");
+    
+    // Check if we got meaningful text
+    // Use 100 chars minimum, or 50 chars per page for multi-page docs
+    const minChars = pdf.numPages > 1 ? Math.min(100, pdf.numPages * 50) : 50;
+    
+    if (fullText.trim().length < minChars) {
+      console.log("[PDF] Text extraction yielded insufficient content, fallback needed");
+      return null; // Signal that fallback is needed
+    }
+
+    console.log(`[PDF] Extracted ${fullText.length} chars from ${pdf.numPages} pages`);
+    return { text: fullText, numPages: pdf.numPages };
+  } catch (error) {
+    console.error("[PDF] PDF.js extraction failed:", error);
+    return null; // Signal fallback needed
+  }
+}
+
+/**
+ * Parse a scanned PDF using Claude Haiku via the /api/parse-pdf endpoint.
+ * This is the fallback when PDF.js can't extract text.
+ */
+export async function parsePdfWithClaude(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  
+  // Note: API key handling is done server-side based on auth context
+
+  const response = await fetch("/api/parse-pdf", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "PDF parsing with AI failed");
+  }
+
+  const { text } = await response.json();
+  console.log(`[PDF] Claude extracted ${text.length} chars`);
+  return text;
+}
+
 /**
  * Parse document content based on MIME type.
- * Currently supports plain text and markdown.
- * PDF support can be added later with pdf-parse or similar.
+ * Currently supports plain text, markdown, and PDF.
  */
 async function parseDocument(
   content: ArrayBuffer | string,
@@ -111,77 +188,140 @@ async function parseDocument(
     return decoder.decode(content);
   }
 
-  // For PDF, we'll need to parse it - for now return error message
+  // PDF is now handled in uploadLargeDocument directly
   if (mimeType === "application/pdf") {
-    // PDF parsing would require a library like pdf-parse
-    // For now, we'll handle this client-side before calling upload
-    throw new Error("PDF files should be converted to text before upload");
+    throw new Error("PDF files should be processed via extractPdfText or parsePdfWithClaude");
   }
 
   throw new Error(`Unsupported file type: ${mimeType}`);
 }
 
 /**
- * Upload and index a large document.
- *
- * Process:
- * 1. Create document metadata record
- * 2. Parse document content to text
- * 3. Chunk the text using the markdown chunker
- * 4. Embed all chunks in batches
- * 5. Store chunks with embeddings
+ * Result of storing a document (fast operation).
  */
-export async function uploadLargeDocument(
+export interface StoredDocumentResult {
+  metadata: LargeDocumentMetadata;
+  fileData: ArrayBuffer;
+}
+
+/**
+ * Store a large document for immediate viewing.
+ * This is the fast path - stores file and metadata, returns immediately.
+ * Call indexLargeDocumentInBackground() separately to index for search.
+ *
+ * @returns metadata and file data for immediate viewing
+ */
+export async function storeLargeDocument(
   file: File,
-  description?: string,
-  onProgress?: (progress: IndexingProgress) => void
-): Promise<LargeDocumentMetadata> {
+  description?: string
+): Promise<StoredDocumentResult> {
   const db = await getLargeDocumentsDb();
   const documentId = generateId();
+  const mimeType = file.type || "text/plain";
 
-  // Create initial metadata
+  // Create initial metadata with pending_index status
   const metadata: LargeDocumentMetadata = {
     id: documentId,
     filename: file.name,
-    mimeType: file.type || "text/plain",
+    mimeType,
     fileSize: file.size,
     chunkCount: 0,
     uploadedAt: Date.now(),
     indexedAt: 0,
     description,
-    status: "uploading",
+    status: "uploading", // Will be updated to "indexing" when background index starts
   };
 
   // Save initial metadata
   await db.put("documents", metadata);
 
+  // Store original file for viewing
+  const fileData = await file.arrayBuffer();
+  await storeDocumentFile(documentId, fileData, mimeType);
+
+  console.log(`[LargeDocs] Stored document ${documentId} for immediate viewing`);
+
+  return { metadata, fileData };
+}
+
+/**
+ * Index a document in the background after it's been stored.
+ * This is the slow path - parses, chunks, and embeds the content.
+ * The document must have already been stored via storeLargeDocument().
+ *
+ * @param documentId - ID of the already-stored document
+ * @param file - Original file for text extraction
+ * @param onProgress - Optional progress callback
+ */
+export async function indexLargeDocumentInBackground(
+  documentId: string,
+  file: File,
+  onProgress?: (progress: IndexingProgress) => void
+): Promise<LargeDocumentMetadata> {
+  const db = await getLargeDocumentsDb();
+  const mimeType = file.type || "text/plain";
+
+  // Get existing metadata
+  let metadata = await db.get("documents", documentId);
+  if (!metadata) {
+    throw new Error(`Document ${documentId} not found for indexing`);
+  }
+
   try {
-    // Report parsing status
-    onProgress?.({
-      current: 0,
-      total: 4,
-      status: "parsing",
-      message: "Parsing document...",
-    });
-
-    // Read file content
-    const content = await file.text();
-
     // Update status to indexing
     metadata.status = "indexing";
     await db.put("documents", metadata);
 
+    // Report parsing status
+    onProgress?.({
+      current: 0,
+      total: 5,
+      status: "parsing",
+      message: "Parsing document...",
+    });
+
+    let content: string;
+
+    // Handle PDF files specially
+    if (mimeType === "application/pdf") {
+      // Try PDF.js extraction first (free, fast)
+      onProgress?.({
+        current: 0,
+        total: 5,
+        status: "pdf-extraction",
+        message: "Extracting text from PDF...",
+      });
+
+      const pdfResult = await extractPdfText(file);
+      
+      if (pdfResult) {
+        // PDF.js extraction succeeded
+        content = pdfResult.text;
+      } else {
+        // Fallback to Claude Haiku for scanned PDFs
+        onProgress?.({
+          current: 0.5,
+          total: 5,
+          status: "ai-extraction",
+          message: "Using AI to extract text from scanned PDF...",
+        });
+        
+        content = await parsePdfWithClaude(file);
+      }
+    } else {
+      // Read text-based file content directly
+      content = await file.text();
+    }
+
     // Report chunking status
     onProgress?.({
       current: 1,
-      total: 4,
+      total: 5,
       status: "chunking",
       message: "Splitting into chunks...",
     });
 
     // Chunk the content with optimized settings for document Q&A
-    // - 512 tokens: optimal for fact-focused retrieval
-    // - 75 token overlap: prevents context loss at boundaries
     const chunks = chunkMarkdown(content, DEFAULT_CHUNK_OPTIONS);
 
     if (chunks.length === 0) {
@@ -191,7 +331,7 @@ export async function uploadLargeDocument(
     // Report embedding status
     onProgress?.({
       current: 2,
-      total: 4,
+      total: 5,
       status: "embedding",
       message: `Embedding ${chunks.length} chunks...`,
     });
@@ -229,12 +369,12 @@ export async function uploadLargeDocument(
 
       // Update progress
       const progress = Math.min(
-        2 + ((i + BATCH_SIZE) / chunks.length),
-        3
+        2 + ((i + BATCH_SIZE) / chunks.length) * 2,
+        4
       );
       onProgress?.({
         current: progress,
-        total: 4,
+        total: 5,
         status: "embedding",
         message: `Embedded ${Math.min(i + BATCH_SIZE, chunks.length)} of ${chunks.length} chunks...`,
       });
@@ -255,15 +395,17 @@ export async function uploadLargeDocument(
 
     // Report complete
     onProgress?.({
-      current: 4,
-      total: 4,
+      current: 5,
+      total: 5,
       status: "complete",
       message: `Indexed ${allChunkRecords.length} chunks successfully`,
     });
 
+    console.log(`[LargeDocs] Finished indexing document ${documentId}: ${allChunkRecords.length} chunks`);
+
     return metadata;
   } catch (error) {
-    // Update metadata with error
+    // Update metadata with error (but keep file viewable)
     metadata.status = "error";
     metadata.errorMessage =
       error instanceof Error ? error.message : String(error);
@@ -271,13 +413,39 @@ export async function uploadLargeDocument(
 
     onProgress?.({
       current: 0,
-      total: 4,
+      total: 5,
       status: "error",
       message: metadata.errorMessage,
     });
 
+    console.error(`[LargeDocs] Indexing failed for document ${documentId}:`, error);
     throw error;
   }
+}
+
+/**
+ * Upload and index a large document.
+ * This is the legacy combined function that stores and indexes synchronously.
+ * For immediate viewing with background indexing, use storeLargeDocument() 
+ * followed by indexLargeDocumentInBackground().
+ *
+ * Process:
+ * 1. Store file for viewing (fast)
+ * 2. Parse document content to text (with PDF extraction if needed)
+ * 3. Chunk the text using the markdown chunker
+ * 4. Embed all chunks in batches
+ * 5. Store chunks with embeddings
+ */
+export async function uploadLargeDocument(
+  file: File,
+  description?: string,
+  onProgress?: (progress: IndexingProgress) => void
+): Promise<LargeDocumentMetadata> {
+  // Store the document first (fast)
+  const { metadata } = await storeLargeDocument(file, description);
+  
+  // Then index it (slow) - this blocks until complete for legacy compatibility
+  return indexLargeDocumentInBackground(metadata.id, file, onProgress);
 }
 
 /**
@@ -313,8 +481,35 @@ export async function deleteLargeDocument(documentId: string): Promise<void> {
   // Delete the document metadata
   await db.delete("documents", documentId);
 
+  // Delete the original file data
+  await deleteDocumentFile(documentId);
+
   // Remove cached UMAP projection for this document
   await removeDocumentUmapCache(documentId);
+}
+
+/**
+ * Get the original file data for viewing a document.
+ */
+export async function getLargeDocumentFile(
+  documentId: string
+): Promise<LargeDocumentFile | undefined> {
+  return getDocumentFile(documentId);
+}
+
+/**
+ * Load document content by reconstructing from stored chunks.
+ * Used for text viewer when original file isn't needed.
+ */
+export async function loadDocumentContent(documentId: string): Promise<string> {
+  const db = await getLargeDocumentsDb();
+  const chunks = await db.getAllFromIndex("chunks", "by-document", documentId);
+  
+  // Sort by chunk index
+  chunks.sort((a, b) => a.chunkIndex - b.chunkIndex);
+  
+  // Reconstruct content (note: this won't perfectly restore original due to chunking overlap)
+  return chunks.map(c => c.chunkText).join("\n\n");
 }
 
 /**

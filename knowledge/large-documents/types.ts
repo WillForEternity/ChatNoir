@@ -88,7 +88,19 @@ export interface IndexingProgress {
   /** Total steps */
   total: number;
   /** Current status */
-  status: "parsing" | "chunking" | "embedding" | "complete" | "error";
+  status: "parsing" | "pdf-extraction" | "ai-extraction" | "chunking" | "embedding" | "complete" | "error";
   /** Status message */
   message: string;
+}
+
+/**
+ * Stored file data for viewing documents.
+ */
+export interface LargeDocumentFile {
+  /** Document ID (matches LargeDocumentMetadata.id) */
+  documentId: string;
+  /** Original file data */
+  data: ArrayBuffer;
+  /** MIME type */
+  mimeType: string;
 }

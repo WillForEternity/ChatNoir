@@ -1,0 +1,90 @@
+"use client";
+
+/**
+ * Text Viewer Component
+ *
+ * Renders text/markdown documents with selection support.
+ * When text is selected, triggers callback to create a chat.
+ */
+
+import { useState, useEffect, useRef, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Loader2 } from "lucide-react";
+import { loadDocumentContent } from "@/knowledge/large-documents";
+import type { SelectionData } from "./index";
+
+interface TextViewerProps {
+  documentId: string;
+  onSelection: (selection: SelectionData) => void;
+}
+
+export function TextViewer({ documentId, onSelection }: TextViewerProps) {
+  const [content, setContent] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Load document content from chunks
+  useEffect(() => {
+    setIsLoading(true);
+    setError(null);
+    loadDocumentContent(documentId)
+      .then((text) => {
+        if (text) {
+          setContent(text);
+        } else {
+          setError("Document content not found");
+        }
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed to load document");
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, [documentId]);
+
+  // Handle text selection on mouseup
+  const handleMouseUp = useCallback(() => {
+    const selection = window.getSelection();
+    const text = selection?.toString().trim();
+    if (text && text.length > 0) {
+      onSelection({ text });
+      selection?.removeAllRanges();
+    }
+  }, [onSelection]);
+
+  // Attach mouseup listener
+  useEffect(() => {
+    const container = containerRef.current;
+    container?.addEventListener("mouseup", handleMouseUp);
+    return () => container?.removeEventListener("mouseup", handleMouseUp);
+  }, [handleMouseUp]);
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={containerRef} className="h-full overflow-auto p-8">
+      <div className="max-w-3xl mx-auto prose dark:prose-invert prose-sm">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      </div>
+    </div>
+  );
+}

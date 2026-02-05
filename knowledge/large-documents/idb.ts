@@ -11,7 +11,7 @@
  */
 
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import type { LargeDocumentMetadata, LargeDocumentChunk } from "./types";
+import type { LargeDocumentMetadata, LargeDocumentChunk, LargeDocumentFile } from "./types";
 
 // =============================================================================
 // UMAP CACHE TYPES
@@ -68,6 +68,10 @@ interface LargeDocumentsDbSchema extends DBSchema {
     key: string;
     value: DocumentUmapCache;
   };
+  files: {
+    key: string;
+    value: LargeDocumentFile;
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<LargeDocumentsDbSchema>> | null = null;
@@ -77,7 +81,7 @@ let dbPromise: Promise<IDBPDatabase<LargeDocumentsDbSchema>> | null = null;
  */
 export function getLargeDocumentsDb() {
   if (!dbPromise) {
-    dbPromise = openDB<LargeDocumentsDbSchema>("large_documents_v1", 2, {
+    dbPromise = openDB<LargeDocumentsDbSchema>("large_documents_v1", 3, {
       upgrade(db, oldVersion, newVersion) {
         console.log(`[LargeDocs DB] Upgrading from v${oldVersion} to v${newVersion}`);
 
@@ -103,6 +107,12 @@ export function getLargeDocumentsDb() {
           db.createObjectStore("metadata", { keyPath: "id" });
         }
 
+        // Create files store for original file data (v3)
+        if (!db.objectStoreNames.contains("files")) {
+          console.log("[LargeDocs DB] Creating files store for document viewing");
+          db.createObjectStore("files", { keyPath: "documentId" });
+        }
+
         console.log("[LargeDocs DB] Upgrade complete");
       },
     });
@@ -116,13 +126,48 @@ export function getLargeDocumentsDb() {
 export async function clearLargeDocumentsDb(): Promise<void> {
   const db = await getLargeDocumentsDb();
   
-  const tx = db.transaction(["documents", "chunks", "metadata"], "readwrite");
+  const tx = db.transaction(["documents", "chunks", "metadata", "files"], "readwrite");
   await Promise.all([
     tx.objectStore("documents").clear(),
     tx.objectStore("chunks").clear(),
     tx.objectStore("metadata").clear(),
+    tx.objectStore("files").clear(),
     tx.done,
   ]);
+}
+
+// =============================================================================
+// FILE STORAGE OPERATIONS
+// =============================================================================
+
+/**
+ * Store original file data for viewing.
+ */
+export async function storeDocumentFile(
+  documentId: string,
+  data: ArrayBuffer,
+  mimeType: string
+): Promise<void> {
+  const db = await getLargeDocumentsDb();
+  await db.put("files", { documentId, data, mimeType });
+}
+
+/**
+ * Get original file data for viewing.
+ */
+export async function getDocumentFile(
+  documentId: string
+): Promise<LargeDocumentFile | undefined> {
+  const db = await getLargeDocumentsDb();
+  return db.get("files", documentId);
+}
+
+/**
+ * Delete original file data.
+ */
+export async function deleteDocumentFile(documentId: string): Promise<void> {
+  const db = await getLargeDocumentsDb();
+  await db.delete("files", documentId);
 }
 
 // =============================================================================

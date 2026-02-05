@@ -19,21 +19,34 @@ ChatNoire provides a polished chat experience with a persistent knowledge filesy
 ### Knowledge Filesystem
 - **Persistent Storage** — Client-side IndexedDB storage that Claude can read/write via tools
 - **Hybrid Search (RAG)** — Combines lexical + semantic search with RRF (Reciprocal Rank Fusion)
+- **Knowledge Graph** — Create semantic relationships between files (extends, references, requires, contradicts, etc.)
+- **Graph Traversal** — Navigate prerequisite chains, find related content, and detect contradictions
 - **Sidebar Browser** — Visual file browser in the sidebar to explore your knowledge base
 - **KB Summary Preload** — Hybrid context strategy with summary at prompt start for fast retrieval
 - **Quote-Grounding** — Claude extracts quotes from files before synthesizing responses
 
 ### Large Document RAG
 - **Upload Large Documents** — Upload PDFs, text files, and markdown for Q&A without loading into context
+- **PDF Support** — Hybrid PDF extraction using PDF.js (free) with Claude Haiku fallback for scanned documents
 - **Automatic Chunking** — Heading-aware chunking with 15% overlap to preserve context at boundaries
 - **Hybrid Search** — Combines lexical (exact terms) + semantic (meaning) with RRF fusion
 - **Cross-Encoder Reranking** — Optional reranking stage improves retrieval accuracy by 20-40%
 - **Document Browser** — Visual browser to manage uploaded documents
 
+### Document Viewer
+- **Full-Screen Viewer** — Cursor-style 3-panel layout with header bar showing document title and status
+- **Native PDF Rendering** — View PDFs with page navigation and zoom controls using react-pdf
+- **Screenshot Selection** — Drag to select any region, press Enter to capture and chat about it
+- **Multiple Chat Tabs** — Open multiple chats side-by-side about different selections
+- **Document Sidebar** — Switch between documents without leaving the viewer
+- **Collapsible Panels** — Resize or collapse sidebars with intuitive icons and expand indicators
+- **Chat Badge** — Collapsed chat panel shows badge with active chat count
+
 ### AI Capabilities
 - **Web Search** — Anthropic's first-party web search tool for real-time information
 - **Parallel Context Savers** — Spawn up to 6 background agents to save different categories simultaneously
 - **Agent Orchestrator UI** — Visual slot-based progress indicator showing agent status
+- **Multi-Model Support** — Choose between Haiku, Sonnet, and Opus tiers
 - **Tool Support** — Extensible architecture for adding custom AI tools
 
 ### Authentication & BYOK
@@ -164,6 +177,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 │   ├── operations.ts             # Filesystem operations (read, write, list, etc.)
 │   ├── kb-summary.ts             # KB summary generator for hybrid preload
 │   ├── types.ts                  # TypeScript types
+│   ├── backup.ts                 # Backup/restore functionality
 │   ├── embeddings/               # RAG semantic search system
 │   │   ├── index.ts              # Embeddings public API
 │   │   ├── operations.ts         # Embedding & search operations
@@ -173,16 +187,21 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 │   │   ├── embed-client.ts       # OpenAI embedding API client
 │   │   ├── reranker.ts           # Cross-encoder reranking (Cohere/OpenAI)
 │   │   └── types.ts              # Embedding types
+│   ├── links/                    # Knowledge Graph system
+│   │   ├── index.ts              # Links public API
+│   │   ├── operations.ts         # Link CRUD operations
+│   │   ├── graph-traversal.ts    # BFS graph traversal
+│   │   └── types.ts              # Link/graph types
 │   └── large-documents/          # Large document RAG system
 │       ├── index.ts              # Large docs public API
-│       ├── idb.ts                # IndexedDB schema for documents
-│       ├── operations.ts         # Upload, index, hybrid search operations
+│       ├── idb.ts                # IndexedDB schema for documents + file storage
+│       ├── operations.ts         # Upload, index, hybrid search, PDF extraction
 │       ├── lexical-search.ts     # BM25-style term matching for documents
 │       └── types.ts              # Large document types
 │
 ├── tools/                         # Tool definitions
 │   ├── index.ts                  # Export all tools (createTools factory)
-│   ├── knowledge-tools.ts        # Knowledge filesystem tools (kb_list, kb_read, etc.)
+│   ├── knowledge-tools.ts        # Knowledge filesystem + graph tools (kb_list, kb_read, kb_link, kb_graph, etc.)
 │   ├── document-search.ts        # Large document search tools
 │   ├── save-to-context.ts        # Parallel context-saving tool
 │   ├── web-search.ts             # Anthropic web search integration
@@ -192,17 +211,33 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 │   ├── ai-chat.tsx               # Main chat UI component
 │   ├── chat-sidebar.tsx          # Sidebar with conversation history & KB browser
 │   ├── knowledge-browser.tsx     # Knowledge filesystem browser UI
+│   ├── knowledge-graph-viewer.tsx # Interactive knowledge graph visualization
 │   ├── large-document-browser.tsx # Large document upload/manage UI
+│   ├── chat/                     # Shared chat components (reused by main chat & document viewer)
+│   │   ├── index.ts              # Public exports
+│   │   ├── markdown-content.tsx  # Markdown/LaTeX/code rendering with syntax highlighting
+│   │   ├── tool-invocation.tsx   # Tool call UI rendering
+│   │   └── chat-message.tsx      # Complete message rendering (text, tools, files)
+│   ├── document-viewer/          # Full-screen document viewer
+│   │   ├── index.tsx             # Main 3-panel layout with header bar and react-resizable-panels
+│   │   ├── pdf-viewer.tsx        # PDF rendering with native canvas screenshot capture
+│   │   ├── text-viewer.tsx       # Markdown/text rendering with text selection
+│   │   ├── chat-panel.tsx        # Tabbed chat container
+│   │   ├── chat-instance.tsx     # Individual margin chat (Sonnet model, supports text & image)
+│   │   └── document-sidebar.tsx  # Document list sidebar with collapsible expand indicator
 │   ├── embeddings-viewer.tsx     # KB embeddings debug viewer
+│   ├── document-embeddings-viewer.tsx # Document embeddings debug viewer
 │   ├── chat-embeddings-viewer.tsx # Chat embeddings debug viewer
 │   ├── theme-provider.tsx        # Theme context provider
 │   ├── tools/                    # Tool-specific UI components
 │   │   ├── agent-orchestrator-view.tsx  # Visual agent progress slots
 │   │   ├── context-saver-view.tsx       # Context saver streaming display
 │   │   ├── knowledge-tool-view.tsx      # KB tool result cards
+│   │   ├── knowledge-link-tool-view.tsx # Knowledge graph link result cards
 │   │   ├── document-search-view.tsx     # Large doc search results
 │   │   ├── chat-search-view.tsx         # Chat history search results
 │   │   ├── web-search-view.tsx          # Web search result display
+│   │   ├── chunk-viewer-modal.tsx       # Chunk detail modal
 │   │   └── generic-tool-view.tsx        # Fallback for unknown tools
 │   └── ui/                       # shadcn/ui components
 │
@@ -228,7 +263,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 │   │   ├── chat/route.ts           # Main chat API endpoint
 │   │   ├── embed/route.ts          # Embedding API endpoint
 │   │   ├── context-saver/route.ts  # Context saver agent endpoint
-│   │   └── generate-title/route.ts # Auto title generation endpoint
+│   │   ├── generate-title/route.ts # Auto title generation endpoint
+│   │   └── parse-pdf/route.ts      # Claude Haiku PDF extraction fallback
 │   ├── page.tsx                  # Main page
 │   ├── layout.tsx                # Root layout
 │   └── globals.css               # Global styles
@@ -261,6 +297,10 @@ The Knowledge Filesystem is stored in **IndexedDB** in your browser, providing f
 | `kb_mkdir(path)` | Create a folder |
 | `kb_delete(path)` | Delete a file or folder |
 | `kb_search(query, topK?)` | Hybrid search across all files (lexical + semantic) |
+| `kb_link(source, target, relationship)` | Create a relationship between two files |
+| `kb_unlink(source, target, relationship)` | Remove a relationship |
+| `kb_links(path)` | Query all links for a file (incoming and outgoing) |
+| `kb_graph(startPath, depth?, relationship?, direction?)` | Traverse the knowledge graph |
 
 ### Parallel Context Saving
 
@@ -314,7 +354,7 @@ After initial retrieval, a cross-encoder model reranks the top candidates by exa
 
 ### Unified Search Across All Tools
 
-All three search tools now share the same hybrid search pipeline:
+All three search tools share the same hybrid search pipeline:
 
 | Feature | KB Search | Chat Search | Document Search |
 |---------|-----------|-------------|-----------------|
@@ -329,6 +369,8 @@ All three search tools now share the same hybrid search pipeline:
 
 This ensures consistent behavior and accuracy regardless of which search tool Claude uses.
 
+Additionally, the **Knowledge Graph** provides relationship-based retrieval via `kb_links` and `kb_graph`, complementing the search-based approach with structural navigation.
+
 ### Hybrid Preload Strategy
 
 ChatNoire uses a hybrid context strategy for optimal performance:
@@ -336,6 +378,31 @@ ChatNoire uses a hybrid context strategy for optimal performance:
 - **Semantic search**: Claude uses `kb_search` to find relevant content by meaning or exact terms
 - **On-demand retrieval**: Claude uses `kb_read` to fetch full file contents when needed
 - **Quote-grounding**: Claude extracts quotes from files before synthesizing responses for accuracy
+
+### Knowledge Graph
+
+ChatNoire includes a **Knowledge Graph** that transforms your knowledge base from isolated files into an interconnected web of ideas. Claude automatically creates relationships when you share information.
+
+#### Relationship Types
+
+| Type | Meaning | Example |
+|------|---------|---------|
+| `extends` | Target builds on source | "calculus.md" extends "algebra.md" |
+| `references` | Target cites source | "project-plan.md" references "requirements.md" |
+| `contradicts` | Target conflicts with source | "diet-2025.md" contradicts "diet-2024.md" |
+| `requires` | Target is prerequisite for source | "ml-advanced.md" requires "linear-algebra.md" |
+| `blocks` | Source blocks progress on target | "tech-debt.md" blocks "feature-x.md" |
+| `relates-to` | General thematic connection | "react-hooks.md" relates-to "state-management.md" |
+
+#### Graph Traversal
+
+Use `kb_graph` to navigate the knowledge graph:
+- **Find prerequisites**: `kb_graph("ml-notes.md", depth=3, relationship="requires")` 
+- **Discover related content**: `kb_graph("react.md", direction="both")`
+- **Impact analysis**: `kb_graph("api.md", direction="incoming")` — what depends on this?
+- **Detect contradictions**: `kb_graph("diet.md", relationship="contradicts")`
+
+The graph can be visualized in the sidebar under **Visualization → Graph tab**.
 
 ### Suggested Organization
 
@@ -362,12 +429,13 @@ For documents too large to fit in Claude's context window, ChatNoire provides a 
 ### How It Works
 
 1. **Upload** — Drop a file in the Large Documents browser
-2. **Chunking** — Document is split into ~512-token chunks with 15% overlap
-3. **Embedding** — Each chunk is embedded using OpenAI's embedding model
-4. **Storage** — Chunks and embeddings stored in IndexedDB (client-side)
-5. **Search** — Claude uses `document_search` to find relevant chunks by meaning
-6. **Rerank** — Top candidates are reranked for higher accuracy
-7. **Answer** — Claude synthesizes an answer from the retrieved chunks
+2. **PDF Extraction** — PDFs are parsed using PDF.js (free), with Claude Haiku fallback for scanned documents
+3. **Chunking** — Document is split into ~512-token chunks with 15% overlap
+4. **Embedding** — Each chunk is embedded using OpenAI's embedding model
+5. **Storage** — Chunks, embeddings, and original files stored in IndexedDB (client-side)
+6. **Search** — Claude uses `document_search` to find relevant chunks by meaning
+7. **Rerank** — Top candidates are reranked for higher accuracy
+8. **Answer** — Claude synthesizes an answer from the retrieved chunks
 
 ### Document Tools
 
@@ -375,6 +443,17 @@ For documents too large to fit in Claude's context window, ChatNoire provides a 
 |------|-------------|
 | `document_search(query, topK?, documentId?)` | Semantic search across uploaded documents |
 | `document_list()` | List all uploaded documents |
+
+### PDF Extraction
+
+ChatNoire uses a **hybrid PDF extraction** strategy:
+
+| Method | Cost | Speed | Best For |
+|--------|------|-------|----------|
+| **PDF.js** | Free | Fast | Text-based PDFs with selectable text |
+| **Claude Haiku** | ~$0.01/page | Slower | Scanned documents, image-heavy PDFs |
+
+The system automatically falls back to Claude Haiku when PDF.js extraction yields insufficient text (< 100 characters).
 
 ### Chunking Strategy (2025 Best Practices)
 
@@ -386,8 +465,83 @@ For documents too large to fit in Claude's context window, ChatNoire provides a 
 
 ### Supported File Types
 
-- **Text** — `.txt`, `.md`, `.json`, `.xml`
-- **PDF** — Automatic text extraction via pdfjs-dist
+- **Text** — `.txt`, `.md`, `.json`, `.xml`, `.csv`, `.html` (up to 10MB)
+- **PDF** — Automatic text extraction with AI fallback (up to 50MB)
+
+---
+
+## Document Viewer
+
+ChatNoire includes a **Document Viewer** with a Cursor-style 3-panel layout for reading and discussing documents.
+
+### Layout
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 📄 Document.pdf                              [Indexing...] │           [✕]  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [Document Sidebar]       │  [PDF/Text Viewer]          │  [Chat Panel]      │
+│ (collapsible, resizable) │  (main content area)        │  (collapsible)     │
+│                          │                             │                    │
+│ > Documents              │  ┌─────────────────────┐    │  [Chat 1] [Chat 2] │
+│   • Calculus.pdf         │  │                     │    │  ─────────────────  │
+│   ○ Physics.pdf          │  │   PDF Page Render   │    │  Selection: [img]  │
+│   ○ Notes.md             │  │                     │    │                    │
+│                          │  │   [Drag to select]  │    │  User: Explain...  │
+│                          │  │   [┌───────────┐]   │    │  Claude: This...   │
+│                          │  │   [│ selection │]   │    │                    │
+│                          │  │   [└───────────┘]   │    │  ┌──────────────┐  │
+│                          │  └─────────────────────┘    │  │ [input...]   │  │
+│                          │  [◀ Page 1/50 ▶] [Zoom]     │  └──────────────┘  │
+│ [📄▸]                    │  [Capture (Enter)] [Cancel] │             [💬 2] │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+When sidebars are collapsed, intuitive icons with expand indicators appear:
+- Left sidebar: File icon with chevron (📄▸) 
+- Right chat panel: Message icon with chat count badge (💬 2)
+
+### Features
+
+- **Full-Screen Overlay** — Immersive reading experience with header bar (press ESC to close)
+- **PDF Viewer** — Native PDF rendering with page navigation and zoom
+- **Text Viewer** — Markdown rendering for text documents
+- **Screenshot Selection** — Drag to select a region, press Enter to capture and chat
+- **Multiple Chat Tabs** — Open multiple conversations side-by-side
+- **Resizable Panels** — Drag to resize using `react-resizable-panels`
+- **Collapsible Sidebars** — Collapse panels for more reading space with clear expand indicators
+- **Status Indicators** — Header shows document name, indexing status, and processing errors
+
+### How Screenshot Selection Works
+
+The screenshot-based selection provides a robust way to discuss any part of a document:
+
+1. **Drag** to draw a selection rectangle on the PDF
+2. A visual overlay shows your selection with page number
+3. Press **Enter** to capture (or click the "Capture" button)
+4. Press **Escape** to cancel the selection
+5. The screenshot is captured directly from the PDF canvas (fast, no external libraries)
+6. Claude (Sonnet) analyzes the visual content and responds
+
+This approach is more robust than text selection because:
+- Works with scanned PDFs, diagrams, charts, and images
+- Captures visual layout and formatting
+- No issues with PDF text layer misalignment
+- Supports any visual content, not just text
+- Uses native canvas capture for speed and reliability
+
+### Margin Chat Infrastructure
+
+The margin chat **fully reuses the existing chat infrastructure** with complete feature parity:
+
+- Same `/api/chat` endpoint and `useChat` hook as the main chat
+- **Shared `ChatMessage` component** for full markdown/LaTeX/code rendering
+- **Shared `ToolInvocationRenderer`** for displaying tool calls and results
+- All tools (KB search, document search, web search) work in margin chat
+- Syntax-highlighted code blocks, KaTeX math, GFM tables—identical to the main chat
+- Each chat tab is an independent conversation with its own history
+
+This ensures the document viewer chat has the exact same rendering quality as the main chat.
 
 ---
 
@@ -480,10 +634,18 @@ Create a component in `/components/tools/` to render your tool's results beautif
 
 Edit `/agents/chat-agent.ts` to customize the agent's behavior. The `createChatAgent` function builds the agent with:
 
-- **Model**: Claude Sonnet 4.5 (configurable via `MAIN_MODEL` env var)
+- **Model**: Configurable between Haiku 4.5, Sonnet 4.5, and Opus 4.5 via the model selector
 - **Instructions**: System prompt with XML-structured context engineering
-- **Tools**: All tools from `/tools/index.ts`
+- **Tools**: All tools from `/tools/index.ts` (KB, graph, documents, web search, context savers)
 - **KB Summary**: Pre-generated summary of your knowledge base for hybrid preload
+
+### Model Tiers
+
+| Tier | Model | Display Name | Best For |
+|------|-------|--------------|----------|
+| Haiku | claude-haiku-4-5-20251001 | Apprentice | Fast, simple tasks |
+| Sonnet | claude-sonnet-4-5-20250929 | Master | Balanced speed/quality |
+| Opus | claude-opus-4-5-20251101 | Grandmaster | Complex reasoning |
 
 ### Context Engineering
 
@@ -527,8 +689,10 @@ The system prompt follows research-backed context engineering principles:
 - **Markdown**: react-markdown with remark-gfm
 - **Math Rendering**: KaTeX with rehype-katex and remark-math
 - **Syntax Highlighting**: react-syntax-highlighter with Prism
-- **PDF Parsing**: pdfjs-dist
-- **Storage**: IndexedDB (via `idb`) for knowledge base, chat history, and large documents
+- **PDF Parsing**: pdfjs-dist (client-side extraction) + Claude Haiku (AI fallback)
+- **PDF Viewing**: react-pdf for native PDF rendering
+- **Resizable Panels**: react-resizable-panels for document viewer layout
+- **Storage**: IndexedDB (via `idb`) for knowledge base, chat history, large documents, and file data
 - **Validation**: Zod
 - **Notifications**: Sonner
 

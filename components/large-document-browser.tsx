@@ -21,11 +21,13 @@ import {
   X,
   Pencil,
   Check,
+  Eye,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
-  uploadLargeDocument,
+  storeLargeDocument,
+  indexLargeDocumentInBackground,
   deleteLargeDocument,
   renameLargeDocument,
   getAllLargeDocuments,
@@ -34,6 +36,7 @@ import {
   type LargeDocumentSearchResult,
   type IndexingProgress,
 } from "@/knowledge/large-documents";
+import { DocumentViewer } from "@/components/document-viewer";
 
 interface LargeDocumentBrowserProps {
   className?: string;
@@ -71,6 +74,15 @@ export function LargeDocumentBrowser({ className }: LargeDocumentBrowserProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [viewerDocument, setViewerDocument] = useState<LargeDocumentMetadata | null>(null);
+  
+  // Direct file viewing - for immediate render before indexing
+  const [directViewFile, setDirectViewFile] = useState<File | null>(null);
+  const [directViewFileData, setDirectViewFileData] = useState<ArrayBuffer | null>(null);
+  
+  // Drag and drop state
+  const [isDragging, setIsDragging] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -94,12 +106,8 @@ export function LargeDocumentBrowser({ className }: LargeDocumentBrowserProps) {
     loadDocuments();
   }, [loadDocuments]);
 
-  // Handle file upload
-  const handleUpload = useCallback(async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-
-    const file = files[0];
-
+  // Validate file before upload
+  const validateFile = useCallback((file: File): string | null => {
     // Validate file type
     const allowedTypes = [
       "text/plain",
@@ -108,32 +116,123 @@ export function LargeDocumentBrowser({ className }: LargeDocumentBrowserProps) {
       "application/json",
       "application/xml",
       "text/html",
+      "application/pdf",
     ];
     
-    if (!allowedTypes.includes(file.type) && !file.name.endsWith(".md") && !file.name.endsWith(".txt")) {
-      setError("Please upload a text-based file (.txt, .md, .json, .csv, .xml, .html)");
-      return;
+    const allowedExtensions = [".md", ".txt", ".pdf"];
+    const hasAllowedExtension = allowedExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+    
+    if (!allowedTypes.includes(file.type) && !hasAllowedExtension) {
+      return "Please upload a text-based file (.txt, .md, .json, .csv, .xml, .html) or PDF (.pdf)";
     }
 
-    // Validate file size (max 10MB for now)
-    if (file.size > 10 * 1024 * 1024) {
-      setError("File size must be under 10MB");
+    // Validate file size (max 50MB for PDFs, 10MB for text)
+    const maxSize = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf") 
+      ? 50 * 1024 * 1024 
+      : 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      return `File size must be under ${maxSize === 50 * 1024 * 1024 ? "50MB" : "10MB"}`;
+    }
+    
+    return null;
+  }, []);
+
+  // Handle file upload with immediate viewing
+  const handleUpload = useCallback(async (files: FileList | null, openImmediately = false) => {
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    const validationError = validateFile(file);
+    
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
     try {
       setError(null);
-      await uploadLargeDocument(file, undefined, (progress) => {
-        setUploadProgress(progress);
-      });
+      
+      // For PDFs, enable immediate viewing
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      
+      if (isPdf && openImmediately) {
+        // Get file data for immediate viewing
+        const fileData = await file.arrayBuffer();
+        setDirectViewFile(file);
+        setDirectViewFileData(fileData);
+        
+        // Store the file (fast) and start background indexing
+        const { metadata } = await storeLargeDocument(file);
+        
+        // Refresh document list to show the new document
+        await loadDocuments();
+        
+        // Start background indexing (don't await - let it run in background)
+        indexLargeDocumentInBackground(metadata.id, file, (progress) => {
+          setUploadProgress(progress);
+          if (progress.status === "complete" || progress.status === "error") {
+            setUploadProgress(null);
+            // Refresh to show updated status
+            loadDocuments();
+          }
+        }).catch((err) => {
+          console.error("[Upload] Background indexing failed:", err);
+          setUploadProgress(null);
+          loadDocuments();
+        });
+      } else {
+        // For non-PDFs or regular upload, use the store + index flow
+        setUploadProgress({ current: 0, total: 5, status: "parsing", message: "Storing document..." });
+        
+        const { metadata } = await storeLargeDocument(file);
+        await loadDocuments();
+        
+        // Index in background
+        await indexLargeDocumentInBackground(metadata.id, file, (progress) => {
+          setUploadProgress(progress);
+        });
 
-      // Refresh document list
-      await loadDocuments();
-      setUploadProgress(null);
+        // Refresh document list
+        await loadDocuments();
+        setUploadProgress(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
       setUploadProgress(null);
     }
+  }, [validateFile, loadDocuments]);
+
+  // Drag and drop handlers
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      // Open immediately for PDFs (drag-and-drop = immediate view intent)
+      handleUpload(files, true);
+    }
+  }, [handleUpload]);
+
+  // Close direct view and show stored document
+  const handleCloseDirectView = useCallback(() => {
+    setDirectViewFile(null);
+    setDirectViewFileData(null);
+    // Refresh to ensure we have latest document list
+    loadDocuments();
   }, [loadDocuments]);
 
   // Handle delete
@@ -212,7 +311,31 @@ export function LargeDocumentBrowser({ className }: LargeDocumentBrowserProps) {
   }, [saveEditing, cancelEditing]);
 
   return (
-    <div className={cn("flex flex-col h-full overflow-hidden", className)}>
+    <div 
+      className={cn(
+        "flex flex-col h-full overflow-hidden relative",
+        isDragging && "ring-2 ring-blue-500 ring-inset",
+        className
+      )}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 z-10 bg-blue-50/90 dark:bg-blue-950/90 flex items-center justify-center pointer-events-none">
+          <div className="text-center">
+            <Upload className="w-12 h-12 text-blue-500 mx-auto mb-2" />
+            <p className="text-lg font-medium text-blue-700 dark:text-blue-300">
+              Drop to view & index
+            </p>
+            <p className="text-sm text-blue-600 dark:text-blue-400">
+              PDF will open immediately
+            </p>
+          </div>
+        </div>
+      )}
+      
       {/* Header */}
       <div className="p-4 border-b border-gray-200 dark:border-neutral-700 flex-shrink-0">
         <div className="flex items-center justify-between mb-3">
@@ -252,12 +375,22 @@ export function LargeDocumentBrowser({ className }: LargeDocumentBrowserProps) {
           ref={fileInputRef}
           type="file"
           className="hidden"
-          accept=".txt,.md,.json,.csv,.xml,.html,text/plain,text/markdown,application/json"
-          onChange={(e) => handleUpload(e.target.files)}
+          accept=".txt,.md,.json,.csv,.xml,.html,.pdf,text/plain,text/markdown,application/json,application/pdf"
+          onChange={(e) => {
+            // Open PDFs immediately for consistent experience
+            const files = e.target.files;
+            const isPdf = files && files[0] && (
+              files[0].type === "application/pdf" || 
+              files[0].name.toLowerCase().endsWith(".pdf")
+            );
+            handleUpload(files, isPdf);
+            // Reset input so same file can be selected again
+            e.target.value = "";
+          }}
         />
 
         <p className="text-xs text-gray-500 dark:text-neutral-500 mt-2">
-          Upload large files for RAG search. Claude can search without loading the entire document.
+          Upload documents (including PDFs) for RAG search. Claude can search without loading the entire document.
         </p>
       </div>
 
@@ -441,6 +574,16 @@ export function LargeDocumentBrowser({ className }: LargeDocumentBrowserProps) {
                           )}
                           {/* Action buttons - compact */}
                           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
+                            {/* Allow viewing during indexing/uploading for PDFs (file is stored first) */}
+                            {(doc.status === "ready" || doc.status === "indexing" || doc.status === "uploading") && (
+                              <button
+                                onClick={() => setViewerDocument(doc)}
+                                className="p-1 text-gray-400 hover:text-emerald-500 rounded hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                                title={doc.status === "ready" ? "View document" : "View document (still indexing for search)"}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             <button
                               onClick={() => startEditing(doc)}
                               className="p-1 text-gray-400 hover:text-blue-500 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
@@ -483,6 +626,23 @@ export function LargeDocumentBrowser({ className }: LargeDocumentBrowserProps) {
           {documents.reduce((sum, d) => sum + d.chunkCount, 0)} total chunks
         </p>
       </div>
+
+      {/* Document Viewer Overlay - for existing documents */}
+      {viewerDocument && (
+        <DocumentViewer
+          document={viewerDocument}
+          onClose={() => setViewerDocument(null)}
+        />
+      )}
+      
+      {/* Document Viewer Overlay - for immediate viewing of dropped files */}
+      {directViewFile && directViewFileData && (
+        <DocumentViewer
+          directFile={directViewFile}
+          directFileData={directViewFileData}
+          onClose={handleCloseDirectView}
+        />
+      )}
     </div>
   );
 }
