@@ -40,6 +40,10 @@ export interface MarginChat {
   id: string;
   chatId: string;
   selection: SelectionData;
+  /** Persisted messages for this chat */
+  messages: import("ai").UIMessage[];
+  /** Generated title for this chat */
+  title: string;
 }
 
 interface DocumentViewerProps {
@@ -136,6 +140,8 @@ export function DocumentViewer({ document, directFile, directFileData, onClose }
       id,
       chatId: `margin-${id}`,
       selection,
+      messages: [],
+      title: "New Chat",
     };
     setChats((prev) => [...prev, newChat]);
     setActiveChat(id);
@@ -143,6 +149,20 @@ export function DocumentViewer({ document, directFile, directFileData, onClose }
     if (chatPanelRef.current?.isCollapsed()) {
       chatPanelRef.current.expand();
     }
+  }, []);
+
+  // Update messages for a specific chat (called by ChatInstance)
+  const handleMessagesChange = useCallback((chatId: string, messages: import("ai").UIMessage[]) => {
+    setChats((prev) => prev.map((chat) =>
+      chat.id === chatId ? { ...chat, messages } : chat
+    ));
+  }, []);
+
+  // Update title for a specific chat (called by ChatInstance after AI generates title)
+  const handleTitleChange = useCallback((chatId: string, title: string) => {
+    setChats((prev) => prev.map((chat) =>
+      chat.id === chatId ? { ...chat, title } : chat
+    ));
   }, []);
 
   // Close a chat tab
@@ -324,6 +344,8 @@ export function DocumentViewer({ document, directFile, directFileData, onClose }
               onTabChange={setActiveChat}
               onCloseTab={handleCloseTab}
               onCollapse={() => chatPanelRef.current?.collapse()}
+              onMessagesChange={handleMessagesChange}
+              onTitleChange={handleTitleChange}
             />
           )}
         </Panel>

@@ -20,12 +20,24 @@ import type { MarginChat } from "./index";
 
 interface ChatInstanceProps {
   chat: MarginChat;
+  /** Callback when messages change (for persisting chat state) */
+  onMessagesChange: (messages: import("ai").UIMessage[]) => void;
+  /** Callback when AI generates a title for this chat */
+  onTitleChange: (title: string) => void;
 }
 
-export function ChatInstance({ chat }: ChatInstanceProps) {
+export function ChatInstance({ chat, onMessagesChange, onTitleChange }: ChatInstanceProps) {
   const [input, setInput] = useState("");
   const hasSentInitial = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Store callbacks in refs to avoid dependency changes
+  const onMessagesChangeRef = useRef(onMessagesChange);
+  const onTitleChangeRef = useRef(onTitleChange);
+  useEffect(() => {
+    onMessagesChangeRef.current = onMessagesChange;
+    onTitleChangeRef.current = onTitleChange;
+  }, [onMessagesChange, onTitleChange]);
 
   // Set up transport - same pattern as main chat
   const transport = useMemo(
@@ -55,10 +67,40 @@ export function ChatInstance({ chat }: ChatInstanceProps) {
   const { messages, sendMessage, status, addToolOutput } = useChat({
     id: chat.chatId, // Unique ID isolates this chat's state
     transport,
+    messages: chat.messages, // Restore persisted messages (v6 uses 'messages' instead of 'initialMessages')
     onToolCall: handleToolCall as any,
     // CRITICAL: This tells useChat to automatically continue the conversation
     // after all tool outputs are provided, enabling multi-step tool chains
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    onFinish: async ({ messages: finishedMessages }) => {
+      // Sync messages to parent after AI response completes
+      onMessagesChangeRef.current(finishedMessages);
+
+      // Generate an AI title for the conversation after first response
+      // Only generate if we have at least 2 messages (user + assistant)
+      if (finishedMessages.length >= 2 && chat.title === "New Chat") {
+        try {
+          const response = await fetch("/api/generate-title", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              messages: finishedMessages,
+              // Use free trial for margin chat (no BYOK for simplicity)
+            }),
+          });
+          
+          if (response.ok) {
+            const { title } = await response.json();
+            if (title && typeof title === "string") {
+              onTitleChangeRef.current(title);
+            }
+          }
+        } catch (error) {
+          // Title generation is non-critical, fail silently
+          console.warn("[ChatInstance] Failed to generate title:", error);
+        }
+      }
+    },
   });
 
   // Wire up tool output function
@@ -69,8 +111,9 @@ export function ChatInstance({ chat }: ChatInstanceProps) {
   }, [addToolOutput, setAddToolOutput]);
 
   // Auto-send initial message with selection context (screenshot or text)
+  // Skip if messages already exist (restored from persistence) or already sent
   useEffect(() => {
-    if (hasSentInitial.current || status !== "ready") return;
+    if (hasSentInitial.current || status !== "ready" || chat.messages.length > 0) return;
     
     const { screenshot, text, page } = chat.selection;
     
@@ -111,11 +154,22 @@ export function ChatInstance({ chat }: ChatInstanceProps) {
         text: `Explain this section from the document${pageContext}:\n\n"${text}"`,
       });
     }
-  }, [chat.selection, sendMessage, status]);
+  }, [chat.selection, chat.messages.length, sendMessage, status]);
 
   // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Sync messages to parent whenever they change (including user messages)
+  // This ensures persistence even if the panel is collapsed before AI responds
+  const prevMessagesLengthRef = useRef(chat.messages.length);
+  useEffect(() => {
+    // Only sync if message count increased (avoid initial sync loops)
+    if (messages.length > prevMessagesLengthRef.current) {
+      prevMessagesLengthRef.current = messages.length;
+      onMessagesChangeRef.current(messages);
+    }
   }, [messages]);
 
   // Handle form submission

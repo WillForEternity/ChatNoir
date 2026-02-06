@@ -18,6 +18,8 @@ interface ChatPanelProps {
   onTabChange: (id: string) => void;
   onCloseTab: (id: string) => void;
   onCollapse: () => void;
+  onMessagesChange: (chatId: string, messages: import("ai").UIMessage[]) => void;
+  onTitleChange: (chatId: string, title: string) => void;
 }
 
 export function ChatPanel({
@@ -26,6 +28,8 @@ export function ChatPanel({
   onTabChange,
   onCloseTab,
   onCollapse,
+  onMessagesChange,
+  onTitleChange,
 }: ChatPanelProps) {
   return (
     <div className="h-full flex flex-col bg-white dark:bg-neutral-950 neu-context-white">
@@ -53,13 +57,13 @@ export function ChatPanel({
       {/* Tab Bar - Horizontal, side by side */}
       {chats.length > 0 && (
         <div className="flex border-b border-gray-200 dark:border-neutral-700 overflow-x-auto scrollbar-thin bg-gray-50/50 dark:bg-neutral-900/50">
-          {chats.map((chat, index) => (
+          {chats.map((chat) => (
             <button
               key={chat.id}
               onClick={() => onTabChange(chat.id)}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-2 text-sm whitespace-nowrap border-r border-gray-200 dark:border-neutral-700",
-                "transition-all duration-200 min-w-0",
+                "transition-all duration-200 min-w-0 max-w-[200px]",
                 activeChat === chat.id
                   ? cn(
                       "bg-white dark:bg-neutral-950 -mb-px font-medium",
@@ -68,14 +72,15 @@ export function ChatPanel({
                     )
                   : "bg-gray-50/50 dark:bg-neutral-900/50 hover:bg-gray-100 dark:hover:bg-neutral-800 text-gray-500 dark:text-neutral-500"
               )}
+              title={chat.title}
             >
-              <span>Chat {index + 1}</span>
+              <span className="truncate">{chat.title}</span>
               <span
                 onClick={(e) => {
                   e.stopPropagation();
                   onCloseTab(chat.id);
                 }}
-                className="ml-1 p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                className="ml-1 p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-colors flex-shrink-0"
               >
                 <X className="h-3 w-3" />
               </span>
@@ -91,7 +96,11 @@ export function ChatPanel({
             key={chat.id}
             className={cn("absolute inset-0", activeChat !== chat.id && "hidden")}
           >
-            <ChatInstance chat={chat} />
+            <ChatInstance
+              chat={chat}
+              onMessagesChange={(messages) => onMessagesChange(chat.id, messages)}
+              onTitleChange={(title) => onTitleChange(chat.id, title)}
+            />
           </div>
         ))}
 

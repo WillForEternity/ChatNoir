@@ -109,6 +109,12 @@ const PAGES_TO_PRERENDER = 2;
 // Number of initial pages to always prioritize loading (top-first approach)
 const PRIORITY_PAGES = 3;
 
+// Background preloading interval (ms) - how often to queue another page
+const PRELOAD_INTERVAL_MS = 300;
+
+// Maximum number of pages to preload per interval tick
+const PAGES_PER_TICK = 1;
+
 // Selection rectangle state
 interface SelectionRect {
   startX: number;
@@ -233,6 +239,61 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
       return prev;
     });
   }, [visiblePage, numPages]);
+
+  // =============================================================================
+  // BACKGROUND PRELOADING
+  // =============================================================================
+  // Systematically preload pages in order of distance from the visible page.
+  // This runs continuously in the background, loading pages closest to the 
+  // current view first, then expanding outward until all pages are loaded.
+  
+  useEffect(() => {
+    if (numPages === 0) return;
+    
+    // Check if all pages are already loaded
+    if (renderedPages.size >= numPages) return;
+    
+    const intervalId = setInterval(() => {
+      setRenderedPages(prev => {
+        // If all pages loaded, nothing to do
+        if (prev.size >= numPages) {
+          clearInterval(intervalId);
+          return prev;
+        }
+        
+        const updated = new Set(prev);
+        let addedCount = 0;
+        
+        // Find pages to add, prioritizing by distance from visible page
+        // Start from distance 0 and expand outward
+        for (let distance = 0; distance <= numPages && addedCount < PAGES_PER_TICK; distance++) {
+          // Check page above (visiblePage - distance)
+          const pageAbove = visiblePage - distance;
+          if (pageAbove >= 1 && !updated.has(pageAbove)) {
+            updated.add(pageAbove);
+            addedCount++;
+            if (addedCount >= PAGES_PER_TICK) break;
+          }
+          
+          // Check page below (visiblePage + distance), but not same as above
+          const pageBelow = visiblePage + distance;
+          if (distance > 0 && pageBelow <= numPages && !updated.has(pageBelow)) {
+            updated.add(pageBelow);
+            addedCount++;
+            if (addedCount >= PAGES_PER_TICK) break;
+          }
+        }
+        
+        // Only update state if we added new pages
+        if (updated.size > prev.size) {
+          return updated;
+        }
+        return prev;
+      });
+    }, PRELOAD_INTERVAL_MS);
+    
+    return () => clearInterval(intervalId);
+  }, [numPages, visiblePage, renderedPages.size]);
   
   // Convert to sorted array for rendering
   const pagesToRender = useMemo(() => {
