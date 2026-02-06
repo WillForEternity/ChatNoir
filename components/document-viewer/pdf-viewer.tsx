@@ -216,20 +216,28 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
   // Color inversion state
   const [isInverted, setIsInverted] = useState(false);
 
+  // Selection hint banner dismissed state
+  const [hintDismissed, setHintDismissed] = useState(false);
+
   // Notify parent about selection state changes
   useEffect(() => {
     const hasSelection = isSelecting || pendingSelection !== null;
     onSelectionStateChange?.(hasSelection);
   }, [isSelecting, pendingSelection, onSelectionStateChange]);
 
+  // Track which document ID we've loaded to avoid redundant loads
+  const loadedDocumentIdRef = useRef<string | null>(null);
+
   // If directFileData changes (e.g., new file dropped), update immediately
   useEffect(() => {
     if (directFileData) {
+      loadedDocumentIdRef.current = null; // Clear ref since we're using direct data
       setFileData(new Uint8Array(directFileData));
       setIsLoading(false);
       setError(null);
       setLoadedPages(new Set([1]));
       setRenderedPages(new Set([1, 2, 3])); // Reset rendered pages for new document
+      setHintDismissed(false); // Show hint for new document
     }
   }, [directFileData]);
 
@@ -238,12 +246,16 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
     // Skip loading if we have direct file data or no document ID
     if (directFileData || !documentId) return;
 
+    // Skip if we've already loaded this document (prevents redundant setFileData calls)
+    if (loadedDocumentIdRef.current === documentId && fileData) return;
+
     let cancelled = false;
     
     // Check if we might have it cached (instant check)
     const cached = pdfCache.get(documentId);
     if (cached) {
       // Instant load from cache - return a copy to avoid detachment
+      loadedDocumentIdRef.current = documentId;
       setFileData(new Uint8Array(cached.data));
       setIsLoading(false);
       setError(null);
@@ -255,11 +267,13 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
     setError(null);
     setLoadedPages(new Set([1])); // Reset to first page
     setRenderedPages(new Set([1, 2, 3])); // Reset rendered pages
+    setHintDismissed(false); // Show hint for new document
 
     getCachedPDF(documentId)
       .then((data) => {
         if (cancelled) return;
         if (data) {
+          loadedDocumentIdRef.current = documentId;
           setFileData(data);
         } else {
           setError("PDF file not found in storage. The document may still be uploading.");
@@ -274,7 +288,7 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
       });
 
     return () => { cancelled = true; };
-  }, [documentId, directFileData]);
+  }, [documentId, directFileData, fileData]);
 
   // Track which pages should be rendered
   // Uses adaptive memory management: small docs keep all, large docs use sliding window
@@ -736,10 +750,22 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
   return (
     <div className="h-full flex flex-col">
       {/* Selection Hint Banner */}
-      {!pendingSelection && (
-        <div className="flex-shrink-0 flex items-center justify-center gap-2 px-4 py-1.5 bg-gray-50/50 dark:bg-neutral-900/50 border-b border-gray-200 dark:border-neutral-700 text-xs text-gray-500 dark:text-neutral-500">
-          <Camera className="h-3.5 w-3.5" />
-          <span>Drag to select an area, then press Enter to capture and chat</span>
+      {!pendingSelection && !hintDismissed && (
+        <div className="flex-shrink-0 flex items-center justify-between px-4 py-1.5 bg-gray-50/50 dark:bg-neutral-900/50 border-b border-gray-200 dark:border-neutral-700 text-xs text-gray-500 dark:text-neutral-500">
+          <div className="flex-1" /> {/* Spacer for centering */}
+          <div className="flex items-center gap-2">
+            <Camera className="h-3.5 w-3.5" />
+            <span>Drag to select an area, then press Enter to capture and chat</span>
+          </div>
+          <div className="flex-1 flex justify-end">
+            <button
+              onClick={() => setHintDismissed(true)}
+              className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-neutral-700 transition-colors"
+              title="Dismiss"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -789,7 +815,7 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
       {/* PDF Content - Scrollable, renders visible pages + buffer */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto bg-gray-100 dark:bg-neutral-900 flex flex-col items-center py-4 gap-4 select-none"
+        className="flex-1 overflow-auto bg-gray-100 dark:bg-neutral-950 flex flex-col items-center py-4 gap-4 select-none"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
