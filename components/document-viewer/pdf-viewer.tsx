@@ -115,6 +115,74 @@ const PRELOAD_INTERVAL_MS = 300;
 // Maximum number of pages to preload per interval tick
 const PAGES_PER_TICK = 1;
 
+// =============================================================================
+// ADAPTIVE MEMORY MANAGEMENT
+// =============================================================================
+// For small documents, keep all pages rendered (best UX).
+// For larger documents, use a sliding window to limit memory usage.
+// This prevents memory issues with 100+ page documents.
+
+// Threshold: documents with this many pages or fewer keep all pages rendered
+const SMALL_DOC_THRESHOLD = 30;
+
+// For medium docs (31-100 pages), keep this many pages rendered
+const MEDIUM_DOC_WINDOW = 20;
+
+// For large docs (100+ pages), keep this many pages rendered  
+const LARGE_DOC_WINDOW = 15;
+
+// Large doc threshold
+const LARGE_DOC_THRESHOLD = 100;
+
+/**
+ * Calculate how many pages to keep rendered based on document size.
+ */
+function getRetentionWindow(numPages: number): number {
+  if (numPages <= SMALL_DOC_THRESHOLD) {
+    return numPages; // Keep all pages for small docs
+  } else if (numPages <= LARGE_DOC_THRESHOLD) {
+    return MEDIUM_DOC_WINDOW;
+  } else {
+    return LARGE_DOC_WINDOW;
+  }
+}
+
+/**
+ * Calculate which pages should be in the retention window.
+ * Centers on visiblePage with slight forward bias (users scroll down more).
+ */
+function getRetentionRange(visiblePage: number, numPages: number): { start: number; end: number } {
+  const windowSize = getRetentionWindow(numPages);
+  
+  // If keeping all pages, return full range
+  if (windowSize >= numPages) {
+    return { start: 1, end: numPages };
+  }
+  
+  // Slight forward bias: 40% before, 60% after visible page
+  const pagesBefore = Math.floor(windowSize * 0.4);
+  const pagesAfter = windowSize - pagesBefore - 1; // -1 for visible page itself
+  
+  let start = visiblePage - pagesBefore;
+  let end = visiblePage + pagesAfter;
+  
+  // Adjust if we hit boundaries
+  if (start < 1) {
+    end += (1 - start);
+    start = 1;
+  }
+  if (end > numPages) {
+    start -= (end - numPages);
+    end = numPages;
+  }
+  
+  // Final clamp
+  start = Math.max(1, start);
+  end = Math.min(numPages, end);
+  
+  return { start, end };
+}
+
 // Selection rectangle state
 interface SelectionRect {
   startX: number;
@@ -208,84 +276,123 @@ export function PDFViewer({ documentId, directFileData, onSelection, onSelection
     return () => { cancelled = true; };
   }, [documentId, directFileData]);
 
-  // Track which pages should be rendered - once a page is rendered, keep it
-  // This provides a "render once, keep forever" approach for smooth scrolling
+  // Track which pages should be rendered
+  // Uses adaptive memory management: small docs keep all, large docs use sliding window
   const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set([1, 2, 3]));
   
-  // Expand rendered pages as user scrolls - add pages near visible page
+  // =============================================================================
+  // SLIDING WINDOW WITH EVICTION
+  // =============================================================================
+  // For small documents (≤30 pages): keep all pages rendered
+  // For larger documents: maintain a sliding window around visible page
+  // Pages outside the window are evicted to save memory
+  
   useEffect(() => {
     if (numPages === 0) return;
     
+    const { start: retentionStart, end: retentionEnd } = getRetentionRange(visiblePage, numPages);
+    const windowSize = getRetentionWindow(numPages);
+    const shouldEvict = windowSize < numPages;
+    
     setRenderedPages(prev => {
-      const updated = new Set(prev);
+      const updated = new Set<number>();
       
-      // Always include first priority pages
+      // Always include priority pages at the start (for quick initial load)
       for (let i = 1; i <= Math.min(PRIORITY_PAGES, numPages); i++) {
+        // Only keep priority pages if they're within retention window OR doc is small
+        if (!shouldEvict || (i >= retentionStart && i <= retentionEnd)) {
+          updated.add(i);
+        }
+      }
+      
+      // Add all pages within the retention window
+      for (let i = retentionStart; i <= retentionEnd; i++) {
         updated.add(i);
       }
       
-      // Add pages around visible page (with buffer for smooth scrolling)
-      const start = Math.max(1, visiblePage - PAGES_TO_PRERENDER);
-      const end = Math.min(numPages, visiblePage + PAGES_TO_PRERENDER);
-      
-      for (let i = start; i <= end; i++) {
+      // Ensure immediate scroll buffer is always included
+      const bufferStart = Math.max(1, visiblePage - PAGES_TO_PRERENDER);
+      const bufferEnd = Math.min(numPages, visiblePage + PAGES_TO_PRERENDER);
+      for (let i = bufferStart; i <= bufferEnd; i++) {
         updated.add(i);
       }
       
-      // Only update if we added new pages (never remove pages)
-      if (updated.size > prev.size) {
+      // Check if we need to update state
+      // Update if: different size, or any pages changed
+      if (updated.size !== prev.size) {
         return updated;
       }
-      return prev;
+      
+      // Check if contents are the same
+      for (const page of updated) {
+        if (!prev.has(page)) {
+          return updated;
+        }
+      }
+      
+      return prev; // No change
     });
   }, [visiblePage, numPages]);
 
   // =============================================================================
-  // BACKGROUND PRELOADING
+  // BACKGROUND PRELOADING (within retention window)
   // =============================================================================
-  // Systematically preload pages in order of distance from the visible page.
-  // This runs continuously in the background, loading pages closest to the 
-  // current view first, then expanding outward until all pages are loaded.
+  // Systematically preload pages within the retention window in order of 
+  // distance from the visible page. This fills the window smoothly without
+  // waiting for user scroll.
   
   useEffect(() => {
     if (numPages === 0) return;
     
-    // Check if all pages are already loaded
-    if (renderedPages.size >= numPages) return;
+    const { start: retentionStart, end: retentionEnd } = getRetentionRange(visiblePage, numPages);
+    
+    // Calculate how many pages should be in the window
+    const targetSize = retentionEnd - retentionStart + 1;
+    
+    // Check if window is already full
+    let pagesInWindow = 0;
+    for (let i = retentionStart; i <= retentionEnd; i++) {
+      if (renderedPages.has(i)) pagesInWindow++;
+    }
+    if (pagesInWindow >= targetSize) return;
     
     const intervalId = setInterval(() => {
       setRenderedPages(prev => {
-        // If all pages loaded, nothing to do
-        if (prev.size >= numPages) {
-          clearInterval(intervalId);
-          return prev;
+        // Recalculate in case visiblePage changed
+        const { start, end } = getRetentionRange(visiblePage, numPages);
+        
+        // Check if window is full
+        let currentInWindow = 0;
+        for (let i = start; i <= end; i++) {
+          if (prev.has(i)) currentInWindow++;
+        }
+        if (currentInWindow >= (end - start + 1)) {
+          return prev; // Window is full
         }
         
         const updated = new Set(prev);
         let addedCount = 0;
         
-        // Find pages to add, prioritizing by distance from visible page
-        // Start from distance 0 and expand outward
+        // Find pages to add within retention window, prioritizing by distance
         for (let distance = 0; distance <= numPages && addedCount < PAGES_PER_TICK; distance++) {
           // Check page above (visiblePage - distance)
           const pageAbove = visiblePage - distance;
-          if (pageAbove >= 1 && !updated.has(pageAbove)) {
+          if (pageAbove >= start && pageAbove <= end && !updated.has(pageAbove)) {
             updated.add(pageAbove);
             addedCount++;
             if (addedCount >= PAGES_PER_TICK) break;
           }
           
-          // Check page below (visiblePage + distance), but not same as above
+          // Check page below (visiblePage + distance)
           const pageBelow = visiblePage + distance;
-          if (distance > 0 && pageBelow <= numPages && !updated.has(pageBelow)) {
+          if (distance > 0 && pageBelow >= start && pageBelow <= end && !updated.has(pageBelow)) {
             updated.add(pageBelow);
             addedCount++;
             if (addedCount >= PAGES_PER_TICK) break;
           }
         }
         
-        // Only update state if we added new pages
-        if (updated.size > prev.size) {
+        if (updated.size !== prev.size) {
           return updated;
         }
         return prev;
